@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import httpx
@@ -27,6 +28,15 @@ import pytest
 import redis.asyncio as aioredis
 
 from app.config import settings
+from app.models.entities import Cliente, Recurso, Reserva
+from app.models.enums import (
+    MetodoPagamento,
+    PagamentoStatus,
+    ReservaOrigem,
+    ReservaStatus,
+    TipoRecurso,
+)
+from app.services import pagamentos as pagamentos_service
 from app.services.pagarme import HttpClient, SimuladoClient, get_pagarme
 
 CLIENTE_TESTE = SimpleNamespace(
@@ -210,18 +220,6 @@ def _fake_request_factory(handler):
 # `db`/`client` de `conftest.py`).
 # ---------------------------------------------------------------------------
 
-from datetime import datetime, timedelta, timezone
-
-from app.models.entities import Pagamento, Recurso, Reserva
-from app.models.enums import (
-    MetodoPagamento,
-    PagamentoStatus,
-    ReservaOrigem,
-    ReservaStatus,
-    TipoRecurso,
-)
-from app.services import pagamentos as pagamentos_service
-
 
 async def _criar_recurso(db, nome: str = "Campo Pagamentos") -> Recurso:
     recurso = Recurso(nome=nome, tipo=TipoRecurso.campo, ativo=True, ordem=1)
@@ -230,9 +228,7 @@ async def _criar_recurso(db, nome: str = "Campo Pagamentos") -> Recurso:
     return recurso
 
 
-async def _criar_outro_cliente(db, sufixo: str = "outro") -> "Cliente":
-    from app.models.entities import Cliente
-
+async def _criar_outro_cliente(db, sufixo: str = "outro") -> Cliente:
     cliente = Cliente(
         nome="Outro Cliente",
         email=f"outro-{sufixo}-{uuid.uuid4().hex[:8]}@teste.com",
