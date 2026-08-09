@@ -123,7 +123,10 @@ test("login staff -> reserva balcão -> agenda confirmada -> caixa soma -> bloqu
   await expect(page.getByText("Carregando...")).toHaveCount(0, { timeout: 15_000 });
   await expect(page.getByRole("heading", { name: "Itens do dia" })).toBeVisible();
 
-  const linhaCaixa = page.locator("table tbody tr").filter({ hasText: hora }).filter({ hasText: preco });
+  // A coluna "Hora" do caixa mostra quando o pagamento foi recebido (agora),
+  // não o horário do slot reservado (`hora`, hoje+4) — então filtramos pelo
+  // nome do cliente avulso (único por execução) em vez de `hora`.
+  const linhaCaixa = page.locator("table tbody tr").filter({ hasText: nomeAvulso }).filter({ hasText: preco });
   await expect(linhaCaixa).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("Total do dia")).toBeVisible();
 

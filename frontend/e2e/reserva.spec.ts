@@ -73,7 +73,13 @@ test("cadastro -> reserva online -> checkout PIX -> confirmação -> Minha conta
   await expect(page).toHaveURL(/\/conta$/);
   await expect(page.getByRole("heading", { name: "Próximas reservas" })).toBeVisible();
 
-  const linhaReserva = page.locator(".ac-reserva-linha").filter({ hasText: RECURSO }).filter({ hasText: horaSlot });
+  // "Minha conta" mostra o horário como "08:00 às 09:00" (não com o mesmo
+  // "–" usado no slot da grade), então filtramos só pela hora de início.
+  const horaInicio = horaSlot.split("–")[0];
+  const linhaReserva = page
+    .locator(".ac-reserva-linha")
+    .filter({ hasText: RECURSO })
+    .filter({ hasText: horaInicio });
   await expect(linhaReserva).toBeVisible();
   await expect(linhaReserva.getByText("Confirmada")).toBeVisible();
 });
