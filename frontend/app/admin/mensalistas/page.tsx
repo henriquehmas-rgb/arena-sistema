@@ -2,9 +2,14 @@
 
 // Admin — Mensalistas (assinaturas recorrentes). Task T12 Step 1.
 //
-// Convenção de dia da semana adotada aqui (mesma usada em app/admin/precos):
+// Convenção de dia da semana usada na UI (mesma usada em app/admin/precos):
 // 0=Domingo, 1=Segunda, ... 6=Sábado (convenção JS Date.getDay()), exibida
 // visualmente em ordem seg→dom.
+//
+// O BACKEND usa outra convenção: datetime.weekday() — 0=Segunda, 1=Terça,
+// ..., 5=Sábado, 6=Domingo. Todo valor de dia_semana lido do backend (pra
+// exibir) ou enviado pro backend (ao criar/editar) precisa passar por uma
+// das funções de conversão abaixo.
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { api } from "@/lib/api";
@@ -31,6 +36,14 @@ type Assinatura = {
 
 const DIAS_LABEL = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 const DIAS_ORDEM_EXIBICAO = [1, 2, 3, 4, 5, 6, 0]; // seg -> dom
+
+// Backend usa 0=segunda..6=domingo (datetime.weekday()); JS Date usa 0=domingo..6=sábado.
+function diaJsParaBackend(diaJs: number): number {
+  return (diaJs + 6) % 7;
+}
+function diaBackendParaJs(diaBackend: number): number {
+  return (diaBackend + 1) % 7;
+}
 
 const METODOS = [
   { valor: "pix", label: "Pix" },
@@ -157,7 +170,7 @@ export default function MensalistasPage() {
       await api.assinaturas.criar({
         cliente_id: clienteSelecionado.id,
         recurso_id: recursoId,
-        dia_semana: diaSemana,
+        dia_semana: diaJsParaBackend(diaSemana),
         hora_inicio: horaInicio,
         valor_centavos: reaisParaCentavos(valorReais),
         metodo,
@@ -326,7 +339,7 @@ export default function MensalistasPage() {
                   <td style={tdStyle}>{nomeDe(a.cliente)}</td>
                   <td style={tdStyle}>{nomeDe(a.recurso)}</td>
                   <td style={tdStyle}>
-                    {DIAS_LABEL[a.dia_semana] ?? a.dia_semana} — {a.hora_inicio}
+                    {DIAS_LABEL[diaBackendParaJs(a.dia_semana)] ?? a.dia_semana} — {a.hora_inicio}
                   </td>
                   <td style={tdStyle}>{a.valor_centavos != null ? centavos(a.valor_centavos) : "—"}</td>
                   <td style={tdStyle}>

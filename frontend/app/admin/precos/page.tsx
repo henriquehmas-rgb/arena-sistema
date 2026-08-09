@@ -2,8 +2,13 @@
 
 // Admin — Tabela de preços por recurso. Task T12 Step 2.
 //
-// Convenção de dia da semana: 0=Domingo, 1=Segunda, ... 6=Sábado
+// Convenção de dia da semana na UI: 0=Domingo, 1=Segunda, ... 6=Sábado
 // (Date.getDay()), exibida em ordem seg→dom via DIAS_ORDEM_EXIBICAO.
+//
+// O BACKEND usa outra convenção: datetime.weekday() — 0=Segunda, 1=Terça,
+// ..., 5=Sábado, 6=Domingo. Todo valor de dias_semana lido do backend (pra
+// exibir/pré-selecionar) ou enviado pro backend (ao criar/editar) precisa
+// passar por uma das funções de conversão abaixo.
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { api } from "@/lib/api";
@@ -23,6 +28,14 @@ type Preco = {
 
 const DIAS_ABREV = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const DIAS_ORDEM_EXIBICAO = [1, 2, 3, 4, 5, 6, 0]; // seg -> dom
+
+// Backend usa 0=segunda..6=domingo (datetime.weekday()); JS Date usa 0=domingo..6=sábado.
+function diaJsParaBackend(diaJs: number): number {
+  return (diaJs + 6) % 7;
+}
+function diaBackendParaJs(diaBackend: number): number {
+  return (diaBackend + 1) % 7;
+}
 
 function reaisParaCentavos(valorStr: string): number {
   let s = valorStr.trim();
@@ -68,7 +81,9 @@ function FormularioPreco({
   onCancelar?: () => void;
   salvando: boolean;
 }) {
-  const [dias, setDias] = useState<number[]>(inicial?.dias_semana ?? []);
+  const [dias, setDias] = useState<number[]>(
+    inicial ? inicial.dias_semana.map(diaBackendParaJs) : []
+  );
   const [horaInicio, setHoraInicio] = useState(inicial?.hora_inicio ?? "08:00");
   const [horaFim, setHoraFim] = useState(inicial?.hora_fim ?? "09:00");
   const [valorReais, setValorReais] = useState(inicial ? centavosParaReais(inicial.preco_centavos) : "");
@@ -85,7 +100,12 @@ function FormularioPreco({
       setErro("Selecione ao menos um dia da semana.");
       return;
     }
-    onSalvar({ dias_semana: dias, hora_inicio: horaInicio, hora_fim: horaFim, preco_centavos: reaisParaCentavos(valorReais) });
+    onSalvar({
+      dias_semana: dias.map(diaJsParaBackend),
+      hora_inicio: horaInicio,
+      hora_fim: horaFim,
+      preco_centavos: reaisParaCentavos(valorReais),
+    });
   }
 
   return (
@@ -233,7 +253,7 @@ export default function PrecosPage() {
                       <tr key={p.id}>
                         <td style={tdStyle}>
                           {p.dias_semana
-                            .slice()
+                            .map(diaBackendParaJs)
                             .sort((a, b) => DIAS_ORDEM_EXIBICAO.indexOf(a) - DIAS_ORDEM_EXIBICAO.indexOf(b))
                             .map((d) => DIAS_ABREV[d])
                             .join(", ")}

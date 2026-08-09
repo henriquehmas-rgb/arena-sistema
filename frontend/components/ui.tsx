@@ -104,6 +104,10 @@ export type StatusReserva =
   | "paga"
   | "pago"
   | "falhou"
+  // Status de assinatura (mensalistas):
+  | "ativa"
+  | "pausada"
+  | "inadimplente"
   | string;
 
 const STATUS_LABEL: Record<string, string> = {
@@ -114,6 +118,10 @@ const STATUS_LABEL: Record<string, string> = {
   paga: "Paga",
   pago: "Pago",
   falhou: "Falhou",
+  // Status de assinatura (mensalistas):
+  ativa: "Ativa",
+  pausada: "Pausada",
+  inadimplente: "Inadimplente",
 };
 
 const STATUS_CLASSE: Record<string, string> = {
@@ -124,6 +132,12 @@ const STATUS_CLASSE: Record<string, string> = {
   paga: "ac-badge-confirmada",
   pago: "ac-badge-confirmada",
   falhou: "ac-badge-cancelada",
+  // Status de assinatura (mensalistas):
+  ativa: "ac-badge-confirmada",
+  pausada: "ac-badge-pendente",
+  // Reusa o estilo vermelho já existente para "cancelada" (mesma cor,
+  // var(--vermelho)) em vez de duplicar uma classe CSS idêntica.
+  inadimplente: "ac-badge-cancelada",
 };
 
 /** Selo colorido de status. `<Badge status="confirmada" />` */
