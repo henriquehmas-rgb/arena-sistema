@@ -53,7 +53,7 @@ api.arenacacerense.com.br      → FastAPI (REST /api/v1)
 ## 4. Fluxos
 
 ### 4.1 Reserva avulsa online
-1. Grade real por recurso/dia: livre = sem reserva `pendente/confirmada`, sem bloqueio, sem slot de assinatura ativa.
+1. Grade real por recurso/dia: livre = sem reserva `pendente/confirmada`, sem bloqueio, sem slot de assinatura ativa. Janela de reserva online: até 14 dias à frente (config; sempre menor que as 5 semanas materializadas dos mensalistas). Quiosque: até 60 dias.
 2. Cliente escolhe slot → loga/cria conta → `POST /reservas` cria `pendente_pagamento` (TTL 15 min; segura o slot pela constraint).
 3. Checkout: PIX (QR + copia-e-cola, polling de status) ou cartão. Backend recalcula o valor pela faixa — nunca aceita preço do front.
 4. Webhook Pagar.me `order.paid` → pagamento `pago`, reserva `confirmada`, e-mail de confirmação.
