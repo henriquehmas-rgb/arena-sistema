@@ -51,7 +51,7 @@ const ITENS_MENU: ItemMenu[] = [
   { href: "/admin/caixa", rotulo: "Caixa do dia", papeis: ["admin", "atendente"] },
   { href: "/admin/relatorios", rotulo: "Relatórios", papeis: ["admin"] },
   { href: "/admin/precos", rotulo: "Preços", papeis: ["admin"] },
-  { href: "/admin/assinaturas", rotulo: "Assinaturas", papeis: ["admin"] },
+  { href: "/admin/mensalistas", rotulo: "Assinaturas", papeis: ["admin"] },
   { href: "/admin/equipe", rotulo: "Equipe", papeis: ["admin"] },
 ];
 

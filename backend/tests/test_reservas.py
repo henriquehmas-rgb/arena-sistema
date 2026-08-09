@@ -420,3 +420,64 @@ async def test_rota_listar_staff_paginada(client, db, staff_admin_logado):
     corpo = resp.json()
     assert corpo["total"] == 3
     assert len(corpo["itens"]) == 2
+
+
+async def test_rota_listar_staff_filtra_por_cliente_id(client, db, staff_admin_logado):
+    """Achado de code review (privacidade): `GET /reservas?cliente_id=X` deve
+    devolver SÓ as reservas do cliente X — sem esse filtro, a tela "Histórico
+    do cliente" do admin vazava reservas de outros clientes (o backend
+    ignorava silenciosamente o parâmetro desconhecido e devolvia a lista
+    geral paginada)."""
+    recurso = await criar_recurso(db, nome="Campo T6 Cliente Filtro")
+    cliente_a = await criar_cliente(db, nome="Cliente Filtro A")
+    cliente_b = await criar_cliente(db, nome="Cliente Filtro B")
+    base = datetime.now(timezone.utc) + timedelta(days=21)
+
+    db.add(
+        Reserva(
+            recurso_id=recurso.id,
+            cliente_id=cliente_a.id,
+            inicio=base,
+            fim=base + timedelta(hours=1),
+            status=ReservaStatus.confirmada,
+            origem=ReservaOrigem.online,
+            valor_centavos=PRECO_PADRAO_CENTAVOS,
+        )
+    )
+    db.add(
+        Reserva(
+            recurso_id=recurso.id,
+            cliente_id=cliente_b.id,
+            inicio=base + timedelta(hours=2),
+            fim=base + timedelta(hours=3),
+            status=ReservaStatus.confirmada,
+            origem=ReservaOrigem.online,
+            valor_centavos=PRECO_PADRAO_CENTAVOS,
+        )
+    )
+    await db.flush()
+
+    resp = await client.get(
+        f"/api/v1/reservas?cliente_id={cliente_a.id}",
+        headers=staff_admin_logado["headers"],
+    )
+    assert resp.status_code == 200, resp.text
+    corpo = resp.json()
+    assert corpo["total"] == 1
+    assert len(corpo["itens"]) == 1
+    # `ReservaOut` não expõe `cliente_id` diretamente, mas o horário de início
+    # identifica de forma inequívoca qual das duas reservas voltou: só a do
+    # cliente A (`base`), nunca a do cliente B (`base + 2h`) — é exatamente
+    # o vazamento que este teste existe para prevenir.
+    assert datetime.fromisoformat(corpo["itens"][0]["inicio"]) == base
+
+    # Confere também pelo lado do cliente B, para não passar "por acaso"
+    # caso o filtro esteja invertido ou não fazendo nada.
+    resp_b = await client.get(
+        f"/api/v1/reservas?cliente_id={cliente_b.id}",
+        headers=staff_admin_logado["headers"],
+    )
+    assert resp_b.status_code == 200, resp_b.text
+    corpo_b = resp_b.json()
+    assert corpo_b["total"] == 1
+    assert datetime.fromisoformat(corpo_b["itens"][0]["inicio"]) == base + timedelta(hours=2)

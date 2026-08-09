@@ -198,10 +198,11 @@ async def listar_staff(
     de: datetime | None = None,
     ate: datetime | None = None,
     status_: ReservaStatus | None = None,
+    cliente_id: int | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[Reserva], int]:
-    """Lista reservas para o painel staff (`GET /reservas?recurso_id&de&ate&status`),
+    """Lista reservas para o painel staff (`GET /reservas?recurso_id&de&ate&status&cliente_id`),
     paginada (`limit`/`offset`, default 50). Retorna `(itens, total)` — `total`
     é a contagem sem paginação, para o frontend montar os controles de
     página sem um segundo request."""
@@ -214,6 +215,8 @@ async def listar_staff(
         filtros.append(Reserva.inicio <= ate)
     if status_ is not None:
         filtros.append(Reserva.status == status_)
+    if cliente_id is not None:
+        filtros.append(Reserva.cliente_id == cliente_id)
 
     total = (
         await db.execute(select(func.count()).select_from(Reserva).where(*filtros))

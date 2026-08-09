@@ -12,7 +12,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type Recurso, type Reserva } from "@/lib/api";
 import { Badge, BotaoSecundario, Campo, Card, Titulo, Aviso, Botao } from "@/components/ui";
-import { centavos, dataLocal, horaLocal } from "@/lib/format";
+import { centavos, dataLocal, horaLocal, paraDataISO } from "@/lib/format";
+
+// Achado de code review (T11): o `useEffect` inicial buscava sem nenhum
+// filtro de data, então toda abertura da página trazia o histórico INTEIRO
+// de reservas da arena antes de paginar no client-side. Agora o estado
+// inicial dos filtros já vem com um intervalo padrão (últimos 30 dias até
+// hoje) — o staff ainda pode limpar/ajustar os campos "De"/"Até" e clicar em
+// "Filtrar" normalmente.
+function intervaloPadrao(): { de: string; ate: string } {
+  const hoje = new Date();
+  const trintaDiasAtras = new Date(hoje);
+  trintaDiasAtras.setDate(trintaDiasAtras.getDate() - 30);
+  return { de: paraDataISO(trintaDiasAtras), ate: paraDataISO(hoje) };
+}
 
 const STATUS_OPCOES = [
   { valor: "", rotulo: "Todos" },
@@ -34,8 +47,9 @@ export default function AdminReservasPage() {
   const [recursos, setRecursos] = useState<Recurso[]>([]);
   const [recursoId, setRecursoId] = useState("");
   const [status, setStatus] = useState("");
-  const [de, setDe] = useState("");
-  const [ate, setAte] = useState("");
+  const [{ de: deInicial, ate: ateInicial }] = useState(intervaloPadrao);
+  const [de, setDe] = useState(deInicial);
+  const [ate, setAte] = useState(ateInicial);
 
   const [reservas, setReservas] = useState<Reserva[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);

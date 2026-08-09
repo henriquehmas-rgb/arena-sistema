@@ -3,7 +3,7 @@
     POST /reservas                                   (cliente) -> 201 | 409 slot_ocupado
     GET  /reservas/minhas                             (cliente) -> lista
     POST /reservas/{id}/cancelar                      (cliente) -> 200 | 422 fora_da_janela
-    GET  /reservas?recurso_id&de&ate&status            (staff)   -> lista paginada
+    GET  /reservas?recurso_id&de&ate&status&cliente_id  (staff)   -> lista paginada
     POST /reservas/balcao                              (staff)   -> 201
     POST /reservas/{id}/cancelar-admin {estornar:bool} (staff)   -> 200
 
@@ -112,6 +112,7 @@ async def listar_reservas_staff(
     de: datetime | None = Query(default=None),
     ate: datetime | None = Query(default=None),
     status_filtro: ReservaStatus | None = Query(default=None, alias="status"),
+    cliente_id: int | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _staff: Staff = Depends(get_staff_atual),
@@ -123,6 +124,7 @@ async def listar_reservas_staff(
         de=de,
         ate=ate,
         status_=status_filtro,
+        cliente_id=cliente_id,
         limit=limit,
         offset=offset,
     )
