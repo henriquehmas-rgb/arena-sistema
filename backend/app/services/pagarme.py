@@ -239,6 +239,22 @@ _STATUS_PAGARME_PARA_INTERNO = {
     "chargedback": "falhou",
 }
 
+# Mapa de status de SUBSCRIPTION do Pagar.me -> mesmo vocabulário que
+# `SimuladoClient.criar_subscription` já usa ("ativa"). Os status de
+# subscription da Pagar.me são um vocabulário distinto do de order/charge
+# (`active`, `canceled`, `ended`, `future`, ...), então usam seu próprio
+# mapa — o objetivo aqui não é bater 1:1 com o enum `AssinaturaStatus` do
+# domínio (isso é responsabilidade de quem consome `SubResult.status`, ex.
+# `assinaturas.py`), só manter `SimuladoClient` e `HttpClient` consistentes
+# entre si.
+_STATUS_SUBSCRIPTION_PAGARME_PARA_INTERNO = {
+    "active": "ativa",
+    "canceled": "cancelada",
+    "ended": "cancelada",
+    "pending": "pendente",
+    "future": "pendente",
+}
+
 
 class HttpClient(PagarmeClient):
     """Implementação usada quando `PAGARME_MODE` é `sandbox` ou `producao`.
@@ -390,7 +406,9 @@ class HttpClient(PagarmeClient):
         data = await self._request("POST", "/subscriptions", json=body)
         return SubResult(
             subscription_id=data.get("id", ""),
-            status=data.get("status", "pendente"),
+            status=_STATUS_SUBSCRIPTION_PAGARME_PARA_INTERNO.get(
+                data.get("status", ""), "pendente"
+            ),
         )
 
     async def cancelar_subscription(self, sub_id: str) -> bool:

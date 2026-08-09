@@ -18,11 +18,12 @@ from __future__ import annotations
 import time
 from types import SimpleNamespace
 
+import httpx
 import pytest
 import redis.asyncio as aioredis
 
 from app.config import settings
-from app.services.pagarme import SimuladoClient, get_pagarme
+from app.services.pagarme import HttpClient, SimuladoClient, get_pagarme
 
 CLIENTE_TESTE = SimpleNamespace(
     nome="Cliente Teste",
@@ -152,3 +153,43 @@ async def test_criar_subscription_simulado_retorna_id_sub_sim(simulado: Simulado
 
 async def test_cancelar_subscription_simulado_sempre_true(simulado: SimuladoClient):
     assert await simulado.cancelar_subscription("sub_SIMqualquercoisa") is True
+
+
+# ---------------------------------------------------------------------------
+# HttpClient.criar_subscription: status cru da Pagar.me deve ser mapeado
+# pro mesmo vocabulário que `SimuladoClient` usa (achado do code review:
+# antes, `HttpClient` retornava o status cru da Pagar.me — ex. "active" —
+# em vez do vocabulário interno "ativa" que `SimuladoClient` já retorna).
+# ---------------------------------------------------------------------------
+
+
+async def test_http_client_criar_subscription_mapeia_status_active_para_ativa():
+    def _handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/subscriptions")
+        return httpx.Response(200, json={"id": "sub_abc123", "status": "active"})
+
+    cliente = HttpClient(api_key="sk_test_fake")
+    cliente._request = _fake_request_factory(_handler)  # type: ignore[method-assign]
+
+    resultado = await cliente.criar_subscription(
+        CLIENTE_TESTE, valor_centavos=15000, dia_cobranca=5, metodo="cartao", card_token="tok_fake"
+    )
+
+    assert resultado.subscription_id == "sub_abc123"
+    assert resultado.status == "ativa"
+
+
+def _fake_request_factory(handler):
+    """Substitui `HttpClient._request` por uma versão que usa
+    `httpx.MockTransport` em vez de bater na rede real — não há chave de API
+    real disponível neste ambiente para testar `HttpClient` fim a fim."""
+
+    async def _fake_request(method: str, path: str, json: dict | None = None) -> dict:
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(
+            base_url="https://api.pagar.me/core/v5", transport=transport
+        ) as client:
+            resp = await client.request(method, path, json=json)
+        return resp.json()
+
+    return _fake_request
