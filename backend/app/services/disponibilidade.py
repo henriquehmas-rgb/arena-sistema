@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.entities import Bloqueio, Recurso, Reserva
 from app.models.enums import ReservaStatus, TipoRecurso
-from app.services.precos import PrecoNaoConfigurado, preco_para
+from app.services.precos import PrecoNaoConfigurado, faixas_do_recurso, preco_da_lista
 
 # Campo: slots de 1h fechada, horas cheias 08→22 (último início 22h, fim 23h).
 CAMPO_HORA_INICIO = 8
@@ -78,6 +78,12 @@ async def slots_do_dia(db: AsyncSession, recurso: Recurso, data_local: date) -> 
         )
     ).scalars().all()
 
+    # Busca as faixas de preço UMA vez por chamada (não uma vez por slot) —
+    # evita N+1 query de `FaixaPreco` ao gerar os ~15 slots de um dia de
+    # campo. `preco_da_lista` (função pura) resolve o preço de cada slot
+    # reusando essa mesma lista.
+    faixas = await faixas_do_recurso(db, recurso.id)
+
     slots: list[Slot] = []
     for hora_inicio, hora_fim in _horarios_do_recurso(recurso):
         inicio_local = datetime.combine(data_local, time(hora_inicio, 0), tzinfo=tz)
@@ -90,7 +96,7 @@ async def slots_do_dia(db: AsyncSession, recurso: Recurso, data_local: date) -> 
         passou = inicio_utc < agora
 
         try:
-            preco = await preco_para(db, recurso, inicio_utc, fim_utc)
+            preco = preco_da_lista(faixas, recurso.id, inicio_local)
         except PrecoNaoConfigurado:
             # Decisão própria (não especificada no brief): sem faixa de
             # preço cadastrada pro horário, o slot aparece com preço 0 em

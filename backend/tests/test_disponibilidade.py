@@ -5,11 +5,13 @@ públicas `GET /recursos` / `GET /disponibilidade`, além do CRUD staff
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 from app.config import settings
 from app.models.entities import Bloqueio, FaixaPreco, Recurso, Reserva
 from app.models.enums import ReservaOrigem, ReservaStatus, TipoRecurso
+from app.services import disponibilidade as disponibilidade_module
 from app.services.disponibilidade import PERIODOS_QUIOSQUE, esta_livre, slots_do_dia
 
 TZ = ZoneInfo(settings.tz_local)
@@ -115,6 +117,22 @@ async def test_campo_gera_15_slots_horas_cheias(db):
     assert slots[0].inicio.astimezone(TZ).hour == 8
     assert slots[-1].inicio.astimezone(TZ).hour == 22
     assert slots[-1].fim.astimezone(TZ).hour == 23
+
+
+async def test_slots_do_dia_busca_faixas_de_preco_uma_unica_vez(db):
+    """Regressão do N+1: `slots_do_dia` deve buscar as `FaixaPreco` do
+    recurso UMA vez por chamada (O(1)), não uma vez por slot (O(N)) — um
+    dia de campo gera 15 slots, então uma implementação ingênua dispararia
+    15 queries em `FaixaPreco`."""
+    campo = await criar_campo(db)
+
+    original = disponibilidade_module.faixas_do_recurso
+    spy = AsyncMock(side_effect=original)
+    with patch.object(disponibilidade_module, "faixas_do_recurso", spy):
+        slots = await slots_do_dia(db, campo, DIA_FUTURO)
+
+    assert len(slots) == 15
+    assert spy.await_count == 1
 
 
 async def test_slot_passado_fica_indisponivel(db):
