@@ -349,6 +349,37 @@ async def test_rota_checkout_pix_201(client, db, cliente_logado):
     assert corpo["pix_copia_cola"] is not None
 
 
+async def test_rota_consultar_pagamento_confirma_ao_vivo_quando_ja_pago_na_pagarme(
+    client, db, cliente_logado
+):
+    # O checkout do cliente faz polling em GET /pagamentos/{id} esperando ver
+    # a confirmação aparecer sozinha (sem esperar webhook ou o job de
+    # reconciliação de 10min) — é essa consulta ativa que este teste cobre.
+    cliente = cliente_logado["cliente"]
+    recurso = await _criar_recurso(db)
+    reserva = await _criar_reserva_pendente(db, recurso, cliente.id)
+    pagamento = await pagamentos_service.iniciar_checkout(db, cliente, reserva.id, "pix", None)
+
+    redis_client = aioredis.from_url(settings.redis_url)
+    try:
+        chave = f"simulado:order:{pagamento.pagarme_order_id}"
+        await redis_client.set(chave, str(time.time() - 6), ex=3600)
+    finally:
+        await redis_client.aclose()
+
+    resp = await client.get(
+        f"/api/v1/pagamentos/{pagamento.id}", headers=cliente_logado["headers"]
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "pago"
+
+    await db.refresh(pagamento)
+    await db.refresh(reserva)
+    assert pagamento.status == PagamentoStatus.pago
+    assert reserva.status == ReservaStatus.confirmada
+
+
 # --- confirmar_por_order: idempotência ---------------------------------------
 
 

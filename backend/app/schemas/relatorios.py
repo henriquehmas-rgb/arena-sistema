@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -9,6 +11,7 @@ class CaixaItem(BaseModel):
     id: int
     metodo: str
     valor_centavos: int
+    horario: datetime
     recurso_nome: str | None = None
     cliente_nome: str | None = None
 

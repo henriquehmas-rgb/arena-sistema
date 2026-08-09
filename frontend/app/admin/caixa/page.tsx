@@ -16,6 +16,7 @@ type ItemCaixa = {
   cliente?: string;
   cliente_nome?: string;
   inicio?: string;
+  horario?: string;
   hora?: string;
   metodo?: string;
   origem?: string;
@@ -50,6 +51,7 @@ function itemDescricao(item: ItemCaixa): string {
 }
 
 function itemHora(item: ItemCaixa): string {
+  if (item.horario) return horaLocal(item.horario);
   if (item.inicio) return horaLocal(item.inicio);
   return item.hora ?? "—";
 }

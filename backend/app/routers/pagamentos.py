@@ -12,8 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_cliente_atual, get_db
 from app.models.entities import Cliente, Pagamento, Reserva
+from app.models.enums import PagamentoStatus
 from app.schemas.pagamentos import CheckoutIn, CheckoutOut, PagamentoOut
 from app.services import pagamentos as pagamentos_service
+from app.services.pagarme import get_pagarme
 
 router = APIRouter()
 
@@ -63,4 +65,18 @@ async def consultar_pagamento(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="pagamento_nao_encontrado"
         )
+
+    # O frontend faz polling nesta rota esperando a confirmação aparecer
+    # "ao vivo" (poucos segundos em modo simulado). Sem isso, o pagamento só
+    # mudaria de status quando o webhook chegasse ou no próximo ciclo do job
+    # de reconciliação (10 min) — rápido demais pra esperar numa tela de
+    # checkout. Então, se ainda está pendente e já tem order na Pagar.me,
+    # consulta e confirma/marca falha na hora, antes de responder.
+    if pagamento.status == PagamentoStatus.pendente and pagamento.pagarme_order_id:
+        status_pagarme = await get_pagarme().consultar_order(pagamento.pagarme_order_id)
+        if status_pagarme == "pago":
+            await pagamentos_service.confirmar_por_order(db, pagamento.pagarme_order_id)
+        elif status_pagarme == "falhou":
+            await pagamentos_service.marcar_falhou_por_order(db, pagamento.pagarme_order_id)
+
     return PagamentoOut.model_validate(pagamento)

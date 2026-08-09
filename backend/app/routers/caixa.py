@@ -81,6 +81,7 @@ async def caixa_do_dia(
             Pagamento.id,
             Pagamento.metodo,
             Pagamento.valor_centavos,
+            Pagamento.pago_em,
             func.coalesce(RecursoReserva.nome, RecursoAssinatura.nome).label(
                 "recurso_nome"
             ),
@@ -105,6 +106,7 @@ async def caixa_do_dia(
             id=linha.id,
             metodo=linha.metodo.value,
             valor_centavos=linha.valor_centavos,
+            horario=linha.pago_em,
             recurso_nome=linha.recurso_nome,
             cliente_nome=linha.cliente_nome,
         )
