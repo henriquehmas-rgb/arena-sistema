@@ -2,6 +2,10 @@ from pydantic import BaseModel
 
 
 class CaixaItem(BaseModel):
+    """Shape proposto para os itens de GET /caixa — o contrato original só
+    especifica `itens:[...]` sem detalhar campos. Task T9b (implementação
+    real da rota) deve confirmar ou ajustar estes campos ao construir a
+    consulta agregada; não é um contrato travado como os demais schemas."""
     id: int
     metodo: str
     valor_centavos: int

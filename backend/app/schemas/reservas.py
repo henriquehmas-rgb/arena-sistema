@@ -40,6 +40,9 @@ class DisponibilidadeOut(BaseModel):
     slots: list[SlotOut]
 
 
+# --- Além do bloco literal do brief: inferidas do contrato de API (rotas
+# POST /reservas/{id}/cancelar-admin e respostas genéricas {status}) ---
+
 class CancelarAdminIn(BaseModel):
     estornar: bool
 
