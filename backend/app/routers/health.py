@@ -1,5 +1,6 @@
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +11,7 @@ router = APIRouter()
 
 
 @router.get("/health")
-async def health(db: AsyncSession = Depends(get_db)) -> dict:
+async def health(db: AsyncSession = Depends(get_db)) -> dict | JSONResponse:
     """Healthcheck real: testa conexão com Postgres e Redis (não hardcoded).
 
     Usado pelo healthcheck do container `api` no docker-compose (Step 6).
@@ -32,4 +33,9 @@ async def health(db: AsyncSession = Depends(get_db)) -> dict:
         await client.aclose()
 
     status = "ok" if (db_ok and redis_ok) else "degraded"
-    return {"status": status, "db": db_ok, "redis": redis_ok}
+    payload = {"status": status, "db": db_ok, "redis": redis_ok}
+
+    if status == "degraded":
+        return JSONResponse(status_code=503, content=payload)
+
+    return payload
