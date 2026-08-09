@@ -53,6 +53,20 @@ def _run_migrations() -> None:
     cfg = AlembicConfig(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     cfg.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
+    # `alembic/env.py` chama `logging.config.fileConfig(alembic.ini)`
+    # quando `config.config_file_name` não é None — isso, por padrão,
+    # desabilita (`logger.disabled = True`) todo logger já existente que
+    # não esteja explicitamente listado no `alembic.ini` (comportamento
+    # padrão de `disable_existing_loggers=True` do `fileConfig`). Como
+    # essa fixture roda uma vez por sessão de teste, e loggers da própria
+    # aplicação (ex: `app.email`) já foram criados na hora em que
+    # `tests/conftest.py` importa `app.main`, isso os desabilitava
+    # silenciosamente para o resto da sessão — quebrando testes que usam
+    # `caplog` (ex: `test_auth.py::test_email_noop_loga_quando_smtp_vazio`).
+    # Setar `config_file_name = None` faz o `env.py` pular esse
+    # `fileConfig`; script_location/sqlalchemy.url já foram fornecidos
+    # explicitamente acima, então isso não afeta a migração em si.
+    cfg.config_file_name = None
     command.upgrade(cfg, "head")
 
 
