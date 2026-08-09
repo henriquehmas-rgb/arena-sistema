@@ -1,0 +1,112 @@
+name: arena-sistema
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: arena-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: arena
+      POSTGRES_USER: arena
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina no .env}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks: [app]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arena -d arena"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      # dev: acesso direto pra inspecionar/rodar migrações da máquina host.
+      # Em produção real (VPS) considerar remover essa publicação de porta.
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    container_name: arena-redis
+    restart: unless-stopped
+    networks: [app]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "6379:6379"
+
+  api:
+    build: ../backend
+    image: arena-api:latest
+    container_name: arena-api
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      # Sobrepõe .env: dentro da rede do compose, DB/Redis são alcançados
+      # pelo nome do serviço, não localhost.
+      DATABASE_URL: postgresql+asyncpg://arena:${POSTGRES_PASSWORD}@postgres:5432/arena
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    networks: [app, traefik]
+    ports:
+      # dev: acesso direto sem depender do Traefik (curl localhost:8000/...).
+      - "8000:8000"
+    healthcheck:
+      # curl não existe na imagem slim; python sempre existe.
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health')\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    labels:
+      # Traefik (providers.docker) só lê containers com traefik.enable=true
+      # (exposedbydefault=false na config global). Fora da VPS (sem o
+      # container `traefik` na rede `traefik` e sem DNS apontando pro host),
+      # essas labels são inofensivas — só metadata sem efeito.
+      - "traefik.enable=true"
+      - "traefik.http.routers.arena-api.rule=Host(`api.arenacacerense.com.br`)"
+      - "traefik.http.routers.arena-api.entrypoints=websecure"
+      - "traefik.http.routers.arena-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.arena-api.loadbalancer.server.port=8000"
+
+  web:
+    build:
+      context: ../frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+    image: arena-web:latest
+    container_name: arena-web
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    networks: [app, traefik]
+    ports:
+      # dev: acesso direto (localhost:3000).
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.arena-web.rule=Host(`reservas.arenacacerense.com.br`)"
+      - "traefik.http.routers.arena-web.entrypoints=websecure"
+      - "traefik.http.routers.arena-web.tls.certresolver=letsencrypt"
+      - "traefik.http.services.arena-web.loadbalancer.server.port=3000"
+
+volumes:
+  pg_data:
+
+networks:
+  app:
+  traefik:
+    # Rede compartilhada com o Traefik global da VPS (já existe lá, criada
+    # uma vez para todos os projetos — não é criada por este compose). Em
+    # dev local sem essa rede pré-existente, comente esta linha e a entrada
+    # `traefik` de `networks:` nos serviços `api`/`web`, ou crie a rede com
+    # `docker network create traefik` antes de subir.
+    external: true
