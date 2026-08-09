@@ -31,6 +31,7 @@ def iniciar(app) -> None:
 
     _registrar_materializar_assinaturas(scheduler)  # Task T9
     _registrar_expirar_reservas(scheduler)  # Task T6
+    _registrar_reconciliar_pendentes(scheduler)  # Task T8
 
     scheduler.start()
     app.state.scheduler = scheduler
@@ -90,5 +91,36 @@ def _registrar_expirar_reservas(scheduler: AsyncIOScheduler) -> None:
         _job,
         IntervalTrigger(seconds=60),
         id="expirar_reservas",
+        replace_existing=True,
+    )
+
+
+def _registrar_reconciliar_pendentes(scheduler: AsyncIOScheduler) -> None:
+    """Task T8: job a cada 10 min que roda `app.services.pagamentos.
+    reconciliar_pendentes` — rede de segurança para pagamentos `pendente`
+    cujo webhook da Pagar.me nunca chegou (falha de rede, endpoint fora do
+    ar no momento do evento, etc.). Consulta a Pagar.me diretamente
+    (`consultar_order`) e confirma os que já foram pagos. Mesmo padrão de
+    sessão própria por execução dos jobs acima."""
+    from app.db import AsyncSessionLocal
+    from app.services.pagamentos import reconciliar_pendentes
+
+    async def _job() -> None:
+        async with AsyncSessionLocal() as db:
+            try:
+                confirmados = await reconciliar_pendentes(db)
+                await db.commit()
+                if confirmados:
+                    logger.info(
+                        "job reconciliar_pendentes: %s pagamento(s) confirmado(s)", confirmados
+                    )
+            except Exception:
+                await db.rollback()
+                logger.exception("job reconciliar_pendentes falhou")
+
+    scheduler.add_job(
+        _job,
+        IntervalTrigger(minutes=10),
+        id="reconciliar_pendentes",
         replace_existing=True,
     )

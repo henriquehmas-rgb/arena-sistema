@@ -1,4 +1,7 @@
-"""Testes do cliente Pagar.me (Task T7) — parte 1: modo `simulado`.
+"""Testes do cliente Pagar.me (Task T7) — parte 1 — e checkout/estorno/
+reconciliação (Task T8) — parte 2, ao final deste arquivo.
+
+Parte 1: modo `simulado`.
 
 Cobre só `SimuladoClient`/`get_pagarme()`: é a única implementação que roda
 sem uma chave de API real, e por isso a única exigida pelo brief da task.
@@ -16,6 +19,7 @@ cliente Redis real, apontando para `settings.redis_url`/`TEST_REDIS_URL`.
 from __future__ import annotations
 
 import time
+import uuid
 from types import SimpleNamespace
 
 import httpx
@@ -193,3 +197,343 @@ def _fake_request_factory(handler):
         return resp.json()
 
     return _fake_request
+
+
+# ---------------------------------------------------------------------------
+# Parte 2 (Task T8): app.services.pagamentos — checkout, confirmação,
+# estorno e reconciliação.
+#
+# Roda em `PAGARME_MODE=simulado` (padrão) contra o Redis real de teste — o
+# mesmo cliente (`SimuladoClient`, via `get_pagarme()`) exercitado na parte
+# 1 acima, sem nenhum mock/monkeypatch, seguindo o mesmo espírito de
+# `tests/test_expiracao.py` (testa o serviço diretamente com fixtures
+# `db`/`client` de `conftest.py`).
+# ---------------------------------------------------------------------------
+
+from datetime import datetime, timedelta, timezone
+
+from app.models.entities import Pagamento, Recurso, Reserva
+from app.models.enums import (
+    MetodoPagamento,
+    PagamentoStatus,
+    ReservaOrigem,
+    ReservaStatus,
+    TipoRecurso,
+)
+from app.services import pagamentos as pagamentos_service
+
+
+async def _criar_recurso(db, nome: str = "Campo Pagamentos") -> Recurso:
+    recurso = Recurso(nome=nome, tipo=TipoRecurso.campo, ativo=True, ordem=1)
+    db.add(recurso)
+    await db.flush()
+    return recurso
+
+
+async def _criar_outro_cliente(db, sufixo: str = "outro") -> "Cliente":
+    from app.models.entities import Cliente
+
+    cliente = Cliente(
+        nome="Outro Cliente",
+        email=f"outro-{sufixo}-{uuid.uuid4().hex[:8]}@teste.com",
+        senha_hash=None,
+        celular="65988880000",
+    )
+    db.add(cliente)
+    await db.flush()
+    return cliente
+
+
+async def _criar_reserva_pendente(
+    db, recurso: Recurso, cliente_id: int, *, criado_em: datetime | None = None
+) -> Reserva:
+    agora = datetime.now(timezone.utc)
+    reserva = Reserva(
+        recurso_id=recurso.id,
+        cliente_id=cliente_id,
+        inicio=agora + timedelta(days=1),
+        fim=agora + timedelta(days=1, hours=1),
+        status=ReservaStatus.pendente_pagamento,
+        origem=ReservaOrigem.online,
+        valor_centavos=5000,
+        criado_em=criado_em or agora,
+    )
+    db.add(reserva)
+    await db.flush()
+    return reserva
+
+
+# --- iniciar_checkout --------------------------------------------------------
+
+
+async def test_iniciar_checkout_pix_cria_pagamento_pendente_com_order(db, cliente_logado):
+    cliente = cliente_logado["cliente"]
+    recurso = await _criar_recurso(db)
+    reserva = await _criar_reserva_pendente(db, recurso, cliente.id)
+
+    pagamento = await pagamentos_service.iniciar_checkout(
+        db, cliente, reserva.id, "pix", None
+    )
+
+    assert pagamento.id is not None
+    assert pagamento.status == PagamentoStatus.pendente
+    assert pagamento.reserva_id == reserva.id
+    assert pagamento.metodo == MetodoPagamento.pix
+    assert pagamento.pagarme_order_id
+    assert pagamento.pagarme_order_id.startswith("order_SIM")
+    assert getattr(pagamento, "pix_qr_code", None) is not None
+
+
+async def test_iniciar_checkout_reserva_de_outro_cliente_levanta_erro(db, cliente_logado):
+    dono_da_reserva = await _criar_outro_cliente(db)
+    recurso = await _criar_recurso(db)
+    reserva = await _criar_reserva_pendente(db, recurso, dono_da_reserva.id)
+
+    with pytest.raises(pagamentos_service.ReservaInvalidaParaCheckoutError):
+        await pagamentos_service.iniciar_checkout(
+            db, cliente_logado["cliente"], reserva.id, "pix", None
+        )
+
+
+async def test_iniciar_checkout_reserva_ja_confirmada_levanta_erro(db, cliente_logado):
+    cliente = cliente_logado["cliente"]
+    recurso = await _criar_recurso(db)
+    reserva = await _criar_reserva_pendente(db, recurso, cliente.id)
+    reserva.status = ReservaStatus.confirmada
+    await db.flush()
+
+    with pytest.raises(pagamentos_service.ReservaInvalidaParaCheckoutError):
+        await pagamentos_service.iniciar_checkout(db, cliente, reserva.id, "pix", None)
+
+
+async def test_iniciar_checkout_reserva_expirada_levanta_erro(db, cliente_logado):
+    cliente = cliente_logado["cliente"]
+    recurso = await _criar_recurso(db)
+    criado_ha_muito = datetime.now(timezone.utc) - timedelta(
+        minutes=settings.reserva_ttl_min + 1
+    )
+    reserva = await _criar_reserva_pendente(
+        db, recurso, cliente.id, criado_em=criado_ha_muito
+    )
+
+    with pytest.raises(pagamentos_service.ReservaInvalidaParaCheckoutError):
+        await pagamentos_service.iniciar_checkout(db, cliente, reserva.id, "pix", None)
+
+
+async def test_rota_checkout_reserva_invalida_422(client, db, cliente_logado):
+    dono_da_reserva = await _criar_outro_cliente(db)
+    recurso = await _criar_recurso(db)
+    reserva = await _criar_reserva_pendente(db, recurso, dono_da_reserva.id)
+
+    resp = await client.post(
+        "/api/v1/pagamentos/checkout",
+        json={"reserva_id": reserva.id, "metodo": "pix"},
+        headers=cliente_logado["headers"],
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "checkout_invalido"
+
+
+async def test_rota_checkout_pix_201(client, db, cliente_logado):
+    cliente = cliente_logado["cliente"]
+    recurso = await _criar_recurso(db)
+    reserva = await _criar_reserva_pendente(db, recurso, cliente.id)
+
+    resp = await client.post(
+        "/api/v1/pagamentos/checkout",
+        json={"reserva_id": reserva.id, "metodo": "pix"},
+        headers=cliente_logado["headers"],
+    )
+
+    assert resp.status_code == 201
+    corpo = resp.json()
+    assert corpo["status"] == "pendente"
+    assert corpo["pix_qr_code"] is not None
+    assert corpo["pix_copia_cola"] is not None
+
+
+# --- confirmar_por_order: idempotência ---------------------------------------
+
+
+async def test_confirmar_por_order_confirma_pagamento_e_reserva(db, cliente_logado):
+    cliente = cliente_logado["cliente"]
+    recurso = await _criar_recurso(db)
+    reserva = await _criar_reserva_pendente(db, recurso, cliente.id)
+    pagamento = await pagamentos_service.iniciar_checkout(db, cliente, reserva.id, "pix", None)
+
+    await pagamentos_service.confirmar_por_order(db, pagamento.pagarme_order_id)
+
+    await db.refresh(pagamento)
+    await db.refresh(reserva)
+    assert pagamento.status == PagamentoStatus.pago
+    assert pagamento.pago_em is not None
+    assert reserva.status == ReservaStatus.confirmada
+
+
+async def test_confirmar_por_order_2x_so_confirma_uma_vez(db, cliente_logado):
+    cliente = cliente_logado["cliente"]
+    recurso = await _criar_recurso(db)
+    reserva = await _criar_reserva_pendente(db, recurso, cliente.id)
+    pagamento = await pagamentos_service.iniciar_checkout(db, cliente, reserva.id, "pix", None)
+
+    await pagamentos_service.confirmar_por_order(db, pagamento.pagarme_order_id)
+    await db.refresh(pagamento)
+    primeiro_pago_em = pagamento.pago_em
+
+    # 2ª chamada para o mesmo order_id: não deve alterar `pago_em` de novo
+    # nem regredir o status — é a garantia "por conteúdo" (independente do
+    # Redis) de que confirmar 2x confirma 1x.
+    await pagamentos_service.confirmar_por_order(db, pagamento.pagarme_order_id)
+    await db.refresh(pagamento)
+
+    assert pagamento.status == PagamentoStatus.pago
+    assert pagamento.pago_em == primeiro_pago_em
+
+
+# --- marcar_falhou_por_order --------------------------------------------------
+
+
+async def test_marcar_falhou_por_order_nao_mexe_na_reserva(db, cliente_logado):
+    cliente = cliente_logado["cliente"]
+    recurso = await _criar_recurso(db)
+    reserva = await _criar_reserva_pendente(db, recurso, cliente.id)
+    pagamento = await pagamentos_service.iniciar_checkout(db, cliente, reserva.id, "pix", None)
+
+    await pagamentos_service.marcar_falhou_por_order(db, pagamento.pagarme_order_id)
+
+    await db.refresh(pagamento)
+    await db.refresh(reserva)
+    assert pagamento.status == PagamentoStatus.falhou
+    assert reserva.status == ReservaStatus.pendente_pagamento
+
+
+# --- estornar_se_pago ---------------------------------------------------------
+
+
+async def test_estornar_se_pago_marca_estornado(db, cliente_logado):
+    cliente = cliente_logado["cliente"]
+    recurso = await _criar_recurso(db)
+    reserva = await _criar_reserva_pendente(db, recurso, cliente.id)
+    pagamento = await pagamentos_service.iniciar_checkout(db, cliente, reserva.id, "pix", None)
+    await pagamentos_service.confirmar_por_order(db, pagamento.pagarme_order_id)
+    await db.refresh(pagamento)
+    assert pagamento.status == PagamentoStatus.pago
+
+    await pagamentos_service.estornar_se_pago(db, reserva)
+
+    await db.refresh(pagamento)
+    assert pagamento.status == PagamentoStatus.estornado
+
+
+async def test_estornar_se_pago_sem_pagamento_pago_e_no_op(db, cliente_logado):
+    cliente = cliente_logado["cliente"]
+    recurso = await _criar_recurso(db)
+    reserva = await _criar_reserva_pendente(db, recurso, cliente.id)
+
+    # Não levanta, não faz nada — reserva nunca teve pagamento confirmado.
+    await pagamentos_service.estornar_se_pago(db, reserva)
+
+
+async def test_cancelar_cliente_com_pagamento_pago_estorna(db, cliente_logado):
+    """Fim-a-fim com o hook de `reservas.cancelar_cliente` (Task T6): a
+    substituição do stub por esta task não deve mudar quem chama
+    `estornar_se_pago`, só o que ele faz de verdade."""
+    from app.services import reservas as reservas_service
+
+    cliente = cliente_logado["cliente"]
+    recurso = await _criar_recurso(db)
+    # `inicio` bem além de `settings.cancelamento_horas` (default 24h) para
+    # não cair na borda exata do limite de cancelamento — o teste é sobre
+    # o estorno, não sobre a janela em si (já coberta em test_reservas.py).
+    agora = datetime.now(timezone.utc)
+    reserva = Reserva(
+        recurso_id=recurso.id,
+        cliente_id=cliente.id,
+        inicio=agora + timedelta(days=3),
+        fim=agora + timedelta(days=3, hours=1),
+        status=ReservaStatus.pendente_pagamento,
+        origem=ReservaOrigem.online,
+        valor_centavos=5000,
+        criado_em=agora,
+    )
+    db.add(reserva)
+    await db.flush()
+    pagamento = await pagamentos_service.iniciar_checkout(db, cliente, reserva.id, "pix", None)
+    await pagamentos_service.confirmar_por_order(db, pagamento.pagarme_order_id)
+
+    await reservas_service.cancelar_cliente(db, cliente, reserva.id)
+
+    await db.refresh(pagamento)
+    assert pagamento.status == PagamentoStatus.estornado
+
+
+# --- reconciliar_pendentes ----------------------------------------------------
+
+
+async def test_reconciliar_pendentes_confirma_pagamento_ja_pago_na_pagarme(db, cliente_logado):
+    cliente = cliente_logado["cliente"]
+    recurso = await _criar_recurso(db)
+    reserva = await _criar_reserva_pendente(db, recurso, cliente.id)
+    pagamento = await pagamentos_service.iniciar_checkout(db, cliente, reserva.id, "pix", None)
+
+    # "Adianta o relógio" da order simulada (mesmo truque de
+    # test_consultar_order_pago_apos_5_segundos acima) para `consultar_order`
+    # já reportar "pago" sem esperar 5s de verdade.
+    redis_client = aioredis.from_url(settings.redis_url)
+    try:
+        await redis_client.set(
+            f"simulado:order:{pagamento.pagarme_order_id}", str(time.time() - 6), ex=3600
+        )
+    finally:
+        await redis_client.aclose()
+
+    # E "adianta" o próprio pagamento para fora da janela de
+    # `RECONCILIACAO_MIN_MINUTOS` (senão `reconciliar_pendentes` o ignora
+    # por ser recente demais).
+    pagamento.criado_em = datetime.now(timezone.utc) - timedelta(
+        minutes=pagamentos_service.RECONCILIACAO_MIN_MINUTOS + 1
+    )
+    await db.flush()
+
+    confirmados = await pagamentos_service.reconciliar_pendentes(db)
+
+    assert confirmados == 1
+    await db.refresh(pagamento)
+    await db.refresh(reserva)
+    assert pagamento.status == PagamentoStatus.pago
+    assert reserva.status == ReservaStatus.confirmada
+
+
+async def test_reconciliar_pendentes_ignora_pagamento_recente(db, cliente_logado):
+    cliente = cliente_logado["cliente"]
+    recurso = await _criar_recurso(db)
+    reserva = await _criar_reserva_pendente(db, recurso, cliente.id)
+    await pagamentos_service.iniciar_checkout(db, cliente, reserva.id, "pix", None)
+
+    # Sem adiantar `criado_em`: ainda está dentro da janela de tolerância,
+    # então nem deveria bater na Pagar.me pra checar.
+    confirmados = await pagamentos_service.reconciliar_pendentes(db)
+
+    assert confirmados == 0
+
+
+# --- job de reconciliação (app.services.jobs) --------------------------------
+
+
+def test_job_reconciliar_pendentes_registrado():
+    """`jobs.iniciar` deve agendar o job `reconciliar_pendentes` a cada
+    10 min, aditivamente ao que T6/T9 já registraram — mesmo padrão de
+    `tests/test_expiracao.py::test_job_expirar_reservas_registrado`."""
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from apscheduler.triggers.interval import IntervalTrigger
+
+    from app.services.jobs import _registrar_reconciliar_pendentes
+
+    scheduler = AsyncIOScheduler()
+    _registrar_reconciliar_pendentes(scheduler)
+
+    job = scheduler.get_job("reconciliar_pendentes")
+    assert job is not None
+    assert isinstance(job.trigger, IntervalTrigger)
+    assert job.trigger.interval.total_seconds() == 600
