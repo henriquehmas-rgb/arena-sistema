@@ -19,6 +19,7 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from app.config import settings
 
@@ -29,6 +30,7 @@ def iniciar(app) -> None:
     scheduler = AsyncIOScheduler(timezone=settings.tz_local)
 
     _registrar_materializar_assinaturas(scheduler)  # Task T9
+    _registrar_expirar_reservas(scheduler)  # Task T6
 
     scheduler.start()
     app.state.scheduler = scheduler
@@ -60,5 +62,33 @@ def _registrar_materializar_assinaturas(scheduler: AsyncIOScheduler) -> None:
         _job,
         CronTrigger(hour=3, minute=0),
         id="materializar_assinaturas",
+        replace_existing=True,
+    )
+
+
+def _registrar_expirar_reservas(scheduler: AsyncIOScheduler) -> None:
+    """Task T6: job a cada 60s que roda `app.services.reservas.expirar_pendentes`
+    para mudar reservas `pendente_pagamento` cujo TTL (`settings.reserva_ttl_min`
+    após `criado_em`) já venceu para `expirada` — libera o slot pra outra
+    reserva. Sessão própria por execução (não reusa uma sessão global),
+    mesmo padrão de `_registrar_materializar_assinaturas` acima."""
+    from app.db import AsyncSessionLocal
+    from app.services.reservas import expirar_pendentes
+
+    async def _job() -> None:
+        async with AsyncSessionLocal() as db:
+            try:
+                expiradas = await expirar_pendentes(db)
+                await db.commit()
+                if expiradas:
+                    logger.info("job expirar_reservas: %s reserva(s) expirada(s)", expiradas)
+            except Exception:
+                await db.rollback()
+                logger.exception("job expirar_reservas falhou")
+
+    scheduler.add_job(
+        _job,
+        IntervalTrigger(seconds=60),
+        id="expirar_reservas",
         replace_existing=True,
     )

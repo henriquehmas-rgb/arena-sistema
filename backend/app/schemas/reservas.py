@@ -49,3 +49,13 @@ class CancelarAdminIn(BaseModel):
 
 class StatusOut(BaseModel):
     status: ReservaStatus
+
+
+class ReservaListaOut(BaseModel):
+    """Shape da listagem paginada `GET /reservas` (staff) — o contrato só diz
+    "lista paginada" sem detalhar o formato; `itens` + `total` (em vez de só
+    a lista crua) permite ao frontend montar paginação sem um segundo
+    request de contagem."""
+
+    itens: list[ReservaOut]
+    total: int
