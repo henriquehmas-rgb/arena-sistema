@@ -10,7 +10,7 @@ from app.deps import get_db
 router = APIRouter()
 
 
-@router.get("/health")
+@router.get("/health", response_model=None)
 async def health(db: AsyncSession = Depends(get_db)) -> dict | JSONResponse:
     """Healthcheck real: testa conexão com Postgres e Redis (não hardcoded).
 
