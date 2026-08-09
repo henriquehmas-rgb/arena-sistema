@@ -54,7 +54,12 @@ app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(clientes.router, prefix="/api/v1/clientes", tags=["clientes"])
 app.include_router(
-    disponibilidade.router, prefix="/api/v1/disponibilidade", tags=["disponibilidade"]
+    # Task T5: expõe `GET /api/v1/recursos` e `GET /api/v1/disponibilidade`
+    # (recursos de topo distintos no contrato congelado, não aninhados) — o
+    # router já define os paths completos (`/recursos`, `/disponibilidade`),
+    # então o prefixo aqui é só `/api/v1`. Era `/api/v1/disponibilidade`
+    # (stub da Wave 0/T3); ajustado nesta task para bater com o contrato.
+    disponibilidade.router, prefix="/api/v1", tags=["disponibilidade"]
 )
 app.include_router(reservas.router, prefix="/api/v1/reservas", tags=["reservas"])
 app.include_router(bloqueios.router, prefix="/api/v1/bloqueios", tags=["bloqueios"])
