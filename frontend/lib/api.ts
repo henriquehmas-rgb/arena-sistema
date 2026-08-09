@@ -34,7 +34,7 @@ export const api = {
   checkout: (b: { reserva_id: number; metodo: "pix" | "cartao"; card_token?: string }) => req<Checkout>("/pagamentos/checkout", { method: "POST", body: JSON.stringify(b) }),
   pagamento: (id: number) => req<{ status: string }>(`/pagamentos/${id}`),
   // admin
-  reservasAdmin: (q: string) => req<Reserva[]>(`/reservas?${q}`),
+  reservasAdmin: (q: string) => req<{ itens: Reserva[]; total: number }>(`/reservas?${q}`),
   reservaBalcao: (b: object) => req<Reserva>("/reservas/balcao", { method: "POST", body: JSON.stringify(b) }),
   cancelarAdmin: (id: number, estornar: boolean) => req(`/reservas/${id}/cancelar-admin`, { method: "POST", body: JSON.stringify({ estornar }) }),
   bloqueios: { listar: (q: string) => req<object[]>(`/bloqueios?${q}`), criar: (b: object) => req("/bloqueios", { method: "POST", body: JSON.stringify(b) }), remover: (id: number) => req(`/bloqueios/${id}`, { method: "DELETE" }) },

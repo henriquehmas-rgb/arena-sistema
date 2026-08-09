@@ -62,8 +62,8 @@ export default function AdminClientesPage() {
     setCarregandoHistorico(true);
     setErro(null);
     try {
-      const lista = await api.reservasAdmin(`cliente_id=${cliente.id}`);
-      setHistorico(lista);
+      const resp = await api.reservasAdmin(`cliente_id=${cliente.id}`);
+      setHistorico(resp.itens);
     } catch (e) {
       setErro(mensagemErro(e, "Não foi possível carregar o histórico deste cliente."));
     } finally {

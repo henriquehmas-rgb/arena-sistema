@@ -3,11 +3,12 @@
 // Lista de reservas com filtros (recurso, status, período) usando
 // `api.reservasAdmin` (GET /reservas?recurso_id&de&ate&status, staff).
 //
-// Paginação: o contrato diz "lista paginada" mas `lib/api.ts` tipa o retorno
-// como `Reserva[]` simples (sem envelope {itens,total,pagina}) e não define
-// parâmetros de página. Decisão (T11): paginamos no cliente sobre o array
-// retornado (fatiar em páginas de 20) até o contrato definir parâmetros de
-// página server-side — documentado aqui como limitação conhecida.
+// Paginação: o backend retorna o envelope `{itens, total}` (ver
+// `backend/app/schemas/reservas.py`, `ReservaListaOut`), mas não expõe
+// `limit`/`offset` como parâmetros de página "amigáveis" ao filtro desta
+// tela. Paginamos no cliente sobre `itens` (fatiar em páginas de 20) até o
+// contrato definir parâmetros de página server-side — documentado aqui como
+// limitação conhecida.
 
 import { useEffect, useMemo, useState } from "react";
 import { api, type Recurso, type Reserva } from "@/lib/api";
@@ -77,8 +78,8 @@ export default function AdminReservasPage() {
       if (status) partes.push(`status=${status}`);
       if (de) partes.push(`de=${de}`);
       if (ate) partes.push(`ate=${ate}`);
-      const lista = await api.reservasAdmin(partes.join("&"));
-      setReservas(lista);
+      const resp = await api.reservasAdmin(partes.join("&"));
+      setReservas(resp.itens);
     } catch (e) {
       setErro(mensagemErro(e, "Não foi possível carregar as reservas."));
     } finally {

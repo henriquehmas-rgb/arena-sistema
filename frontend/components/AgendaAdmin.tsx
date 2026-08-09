@@ -89,11 +89,12 @@ export default function AgendaAdmin() {
 
       await Promise.all(
         ativos.map(async (recurso) => {
-          const [disponibilidade, reservas, bloqueios] = await Promise.all([
+          const [disponibilidade, reservasResp, bloqueios] = await Promise.all([
             api.disponibilidade(recurso.id, data),
-            api.reservasAdmin(`recurso_id=${recurso.id}&de=${data}&ate=${data}`) as Promise<Reserva[]>,
+            api.reservasAdmin(`recurso_id=${recurso.id}&de=${data}&ate=${data}`),
             api.bloqueios.listar(`recurso_id=${recurso.id}&de=${data}&ate=${data}`) as Promise<Bloqueio[]>,
           ]);
+          const reservas = reservasResp.itens;
 
           const porInicio: Record<string, Celula> = {};
           for (const slot of disponibilidade.slots) {

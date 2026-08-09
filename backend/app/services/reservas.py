@@ -104,6 +104,7 @@ async def criar_online(
         origem=ReservaOrigem.online,
         valor_centavos=valor_centavos,
     )
+    reserva.recurso = recurso
     return await _inserir(db, reserva)
 
 
@@ -138,6 +139,7 @@ async def criar_balcao(
         origem=ReservaOrigem.balcao,
         valor_centavos=valor_centavos,
     )
+    reserva.recurso = recurso
     reserva = await _inserir(db, reserva)
 
     db.add(
