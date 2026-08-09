@@ -1,0 +1,21 @@
+# Override de produção (VPS compartilhada): remove a publicação de portas no
+# host que o compose base usa só como atalho de desenvolvimento.
+#
+# - postgres/redis nunca devem ficar expostos no host em produção (só a rede
+#   interna `app`, consumida pelo serviço `api`).
+# - api/web já são expostos publicamente pelo Traefik (labels no compose
+#   base); publicar 8000/3000 no host é redundante em produção e colide com
+#   portas já usadas por outros projetos nesta VPS.
+#
+# O Docker Compose já mescla automaticamente `docker-compose.yml` +
+# `docker-compose.override.yml` do mesmo diretório ao rodar `docker compose
+# up` sem `-f` explícito — não precisa passar este arquivo manualmente.
+services:
+  postgres:
+    ports: !reset []
+  redis:
+    ports: !reset []
+  api:
+    ports: !reset []
+  web:
+    ports: !reset []
