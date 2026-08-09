@@ -120,6 +120,10 @@ def _gerar_token(sub: int, tipo: str, papel: str | None = None) -> str:
     payload = {
         "sub": str(sub),
         "tipo": tipo,
+        # "escopo": "access" — fix pós-review de segurança (T4): deps.py
+        # agora exige esse claim para aceitar o token em rotas normais,
+        # distinguindo-o de um refresh token.
+        "escopo": "access",
         "exp": datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_access_min),
     }
     if papel is not None:

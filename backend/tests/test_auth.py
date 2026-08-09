@@ -267,3 +267,47 @@ async def test_email_noop_loga_quando_smtp_vazio(caplog):
         await email_service.enviar("alguem@teste.com", "Assunto", "<p>oi</p>")
 
     assert any("no-op" in r.getMessage() for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Fix pós-review de segurança: escopo access/refresh + rate-limit falha aberto
+# ---------------------------------------------------------------------------
+
+
+async def test_access_token_como_refresh_401(client):
+    """Um access token válido não pode ser usado como refresh token em
+    `/auth/refresh` — só tokens com claim `escopo="refresh"` (que só
+    circulam via cookie httpOnly) podem gerar novos access tokens."""
+    email = _email("escopo")
+    resp = await client.post(
+        "/api/v1/auth/cliente/cadastro",
+        json={"nome": "Escopo", "email": email, "senha": "senha12345", "celular": "65999990005"},
+    )
+    assert resp.status_code == 201
+    access_token = resp.json()["access_token"]
+
+    resp = await client.post(
+        "/api/v1/auth/refresh", cookies={"refresh_token": access_token}
+    )
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "refresh_token_invalido"
+
+
+async def test_rate_limit_redis_indisponivel_login_nao_500(client, db: AsyncSession, monkeypatch):
+    """Se o Redis estiver inacessível, o login deve continuar funcionando
+    (falha aberto) em vez de retornar 500."""
+    import redis.exceptions
+
+    from app.services import ratelimit
+
+    async def _get_falha(*args, **kwargs):
+        raise redis.exceptions.ConnectionError("redis indisponível (simulado)")
+
+    monkeypatch.setattr(ratelimit.aioredis.Redis, "get", _get_falha)
+
+    staff = await _criar_staff(db, PapelStaff.atendente)
+    resp = await client.post(
+        "/api/v1/auth/staff/login", json={"email": staff.email, "senha": "senha12345"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["access_token"]

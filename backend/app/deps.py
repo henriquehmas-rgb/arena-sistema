@@ -37,11 +37,18 @@ def _decodificar(credentials: HTTPAuthorizationCredentials | None) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED, detail="nao_autenticado"
         )
     try:
-        return auth_service.decodificar_token(credentials.credentials)
+        payload = auth_service.decodificar_token(credentials.credentials)
     except jwt.PyJWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="token_invalido"
         ) from None
+    # Exige escopo="access": impede que um refresh token (que circula só em
+    # cookie httpOnly) seja reaproveitado como access token em rotas normais.
+    if payload.get("escopo") != "access":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="token_invalido"
+        )
+    return payload
 
 
 async def get_cliente_atual(

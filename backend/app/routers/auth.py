@@ -149,6 +149,14 @@ async def refresh(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="refresh_token_invalido"
         )
 
+    # Exige escopo="refresh": sem isso, um access token vazado (mais exposto
+    # que o cookie httpOnly do refresh) poderia ser usado aqui para gerar
+    # novos access tokens indefinidamente.
+    if payload.get("escopo") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="refresh_token_invalido"
+        )
+
     try:
         sub_id = int(payload["sub"])
     except (KeyError, ValueError, TypeError):

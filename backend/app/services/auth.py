@@ -1,12 +1,17 @@
 """Serviço de autenticação: hashing de senha (bcrypt via passlib) e emissão
 /validação de JWT (PyJWT, HS256).
 
-Formato de claims (deliberadamente simples, ver brief da Task T4):
-``{"sub": "<id>", "tipo": "cliente"|"staff", "exp": <timestamp>}``.
-Tokens de acesso e de refresh usam o mesmo formato de claims, diferindo
-apenas na validade (`settings.jwt_access_min` vs `settings.jwt_refresh_dias`)
-— o token de refresh só circula via cookie httpOnly, nunca no corpo da
-resposta. Tokens de redefinição de senha usam ``tipo="redefinir_senha"``.
+Formato de claims: ``{"sub": "<id>", "tipo": "cliente"|"staff", "escopo":
+"access"|"refresh", "exp": <timestamp>}``. Tokens de acesso e de refresh
+diferem tanto na validade (`settings.jwt_access_min` vs
+`settings.jwt_refresh_dias`) quanto no claim `escopo` — isso evita que um
+access token vazado (mais exposto que o cookie httpOnly do refresh) seja
+reaproveitado como refresh token para gerar novos access tokens
+indefinidamente. `deps.py` exige `escopo == "access"` para autenticar
+requisições normais; `POST /auth/refresh` exige `escopo == "refresh"`.
+O token de refresh só circula via cookie httpOnly, nunca no corpo da
+resposta. Tokens de redefinição de senha usam ``tipo="redefinir_senha"``
+(sem `escopo`, mecanismo à parte).
 """
 
 from __future__ import annotations
@@ -33,21 +38,29 @@ def verificar_senha(senha: str, senha_hash: str | None) -> bool:
     return pwd_context.verify(senha, senha_hash)
 
 
-def _criar_token(sub: str, tipo: str, validade: timedelta) -> str:
+def _criar_token(
+    sub: str, tipo: str, validade: timedelta, escopo: str | None = None
+) -> str:
     payload = {
         "sub": sub,
         "tipo": tipo,
         "exp": datetime.now(timezone.utc) + validade,
     }
+    if escopo is not None:
+        payload["escopo"] = escopo
     return jwt.encode(payload, settings.jwt_secret, algorithm=ALGORITHM)
 
 
 def criar_access_token(sub: str, tipo: str) -> str:
-    return _criar_token(sub, tipo, timedelta(minutes=settings.jwt_access_min))
+    return _criar_token(
+        sub, tipo, timedelta(minutes=settings.jwt_access_min), escopo="access"
+    )
 
 
 def criar_refresh_token(sub: str, tipo: str) -> str:
-    return _criar_token(sub, tipo, timedelta(days=settings.jwt_refresh_dias))
+    return _criar_token(
+        sub, tipo, timedelta(days=settings.jwt_refresh_dias), escopo="refresh"
+    )
 
 
 def criar_tokens(sub: str, tipo: str) -> tuple[str, str]:
