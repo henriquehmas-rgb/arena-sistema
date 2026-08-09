@@ -7,7 +7,7 @@ import { estaAutenticado, mensagemErro } from "@/lib/auth";
 import { Badge, BotaoSecundario, Card, Titulo, Aviso } from "@/components/ui";
 import { centavos, dataLocal, horaLocal } from "@/lib/format";
 
-const STATUS_FUTUROS = new Set(["pendente", "confirmada"]);
+const STATUS_FUTUROS = new Set(["pendente_pagamento", "confirmada"]);
 
 export default function ContaPage() {
   const router = useRouter();

@@ -86,7 +86,7 @@ export default function CheckoutPage({ params }: { params: { reservaId: string }
     );
   }
 
-  const expirou = reserva.status !== "pendente" || segundosRestantes === 0;
+  const expirou = reserva.status !== "pendente_pagamento" || segundosRestantes === 0;
 
   if (expirou) {
     return (

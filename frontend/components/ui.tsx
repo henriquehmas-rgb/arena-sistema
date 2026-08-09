@@ -97,7 +97,7 @@ export function Titulo({
 }
 
 export type StatusReserva =
-  | "pendente"
+  | "pendente_pagamento"
   | "confirmada"
   | "cancelada"
   | "expirada"
@@ -111,7 +111,7 @@ export type StatusReserva =
   | string;
 
 const STATUS_LABEL: Record<string, string> = {
-  pendente: "Pendente",
+  pendente_pagamento: "Pendente",
   confirmada: "Confirmada",
   cancelada: "Cancelada",
   expirada: "Expirada",
@@ -125,7 +125,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_CLASSE: Record<string, string> = {
-  pendente: "ac-badge-pendente",
+  pendente_pagamento: "ac-badge-pendente",
   confirmada: "ac-badge-confirmada",
   cancelada: "ac-badge-cancelada",
   expirada: "ac-badge-cancelada",

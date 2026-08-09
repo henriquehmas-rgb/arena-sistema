@@ -22,7 +22,7 @@
 // (campo `origem` já existe em `Reserva`, ver lib/api.ts) e pintamos essas de
 // azul mesmo que o status seja "confirmada".
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Recurso, type Reserva, type Slot } from "@/lib/api";
 import { Botao, BotaoSecundario, Campo, Card, Titulo, Aviso, Badge } from "@/components/ui";
 import { centavos, horaLocal, paraDataISO } from "@/lib/format";
@@ -72,27 +72,39 @@ export default function AgendaAdmin() {
 
   const [mostrarBloqueio, setMostrarBloqueio] = useState(false);
 
+  // Guarda contra corrida entre requisições: trocar `data` rapidamente (ex:
+  // efeito do mount buscando o dia default ainda em voo quando o usuário já
+  // mudou pra outro dia) pode fazer uma resposta velha resolver DEPOIS da
+  // nova e sobrescrever `grade` com os slots do dia errado — o usuário vê a
+  // grade do dia selecionado no campo "Dia", mas os `slot.inicio`/`fim`
+  // embutidos nas células são de outro dia, e a reserva de balcão criada a
+  // partir de um clique acaba salva com a data errada. Cada chamada de
+  // `carregar()` recebe um id incremental; só a resposta da requisição MAIS
+  // RECENTE tem permissão de aplicar `setGrade`/`setRecursos`.
+  const requisicaoAtual = useRef(0);
+
   useEffect(() => {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
   async function carregar() {
+    const idRequisicao = ++requisicaoAtual.current;
+    const dataRequisitada = data;
     setCarregando(true);
     setErro(null);
     try {
       const listaRecursos = await api.recursos();
       const ativos = listaRecursos.filter((r) => r.ativo);
-      setRecursos(ativos);
 
       const novaGrade: Record<number, Record<string, Celula>> = {};
 
       await Promise.all(
         ativos.map(async (recurso) => {
           const [disponibilidade, reservasResp, bloqueios] = await Promise.all([
-            api.disponibilidade(recurso.id, data),
-            api.reservasAdmin(`recurso_id=${recurso.id}&de=${data}&ate=${data}`),
-            api.bloqueios.listar(`recurso_id=${recurso.id}&de=${data}&ate=${data}`) as Promise<Bloqueio[]>,
+            api.disponibilidade(recurso.id, dataRequisitada),
+            api.reservasAdmin(`recurso_id=${recurso.id}&de=${dataRequisitada}&ate=${dataRequisitada}`),
+            api.bloqueios.listar(`recurso_id=${recurso.id}&de=${dataRequisitada}&ate=${dataRequisitada}`) as Promise<Bloqueio[]>,
           ]);
           const reservas = reservasResp.itens;
 
@@ -127,11 +139,14 @@ export default function AgendaAdmin() {
         })
       );
 
+      if (requisicaoAtual.current !== idRequisicao) return; // resposta velha — descarta
+      setRecursos(ativos);
       setGrade(novaGrade);
     } catch (e) {
+      if (requisicaoAtual.current !== idRequisicao) return;
       setErro(mensagemErro(e, "Não foi possível carregar a agenda do dia."));
     } finally {
-      setCarregando(false);
+      if (requisicaoAtual.current === idRequisicao) setCarregando(false);
     }
   }
 

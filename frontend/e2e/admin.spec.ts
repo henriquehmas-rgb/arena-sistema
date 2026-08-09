@@ -110,9 +110,16 @@ test("login staff -> reserva balcão -> agenda confirmada -> caixa soma -> bloqu
   const celulaConfirmada = linhaHorario.locator("td").nth(colBalcao);
   await expect(celulaConfirmada).toContainText("Confirmada", { timeout: 15_000 });
 
-  // 5. Caixa do dia: soma inclui o lançamento recém-criado
+  // 5. Caixa do dia: soma inclui o lançamento recém-criado.
+  // Nota: `GET /caixa` soma por `Pagamento.pago_em` (quando o dinheiro foi
+  // efetivamente recebido no balcão, "hoje"), não pela data da reserva
+  // (`dataAlvo`, hoje+4) — confirmado lendo `backend/app/routers/caixa.py`
+  // e batendo direto na API (`GET /caixa?data=hoje` retorna o item;
+  // `GET /caixa?data=dataAlvo` vem vazio). Usar `dataAlvo` aqui era um bug
+  // no teste, não no app: o fechamento de caixa é por data de recebimento.
+  const dataHoje = dataISO(0);
   await page.goto("/admin/caixa");
-  await page.locator("#caixa-data").fill(dataAlvo);
+  await page.locator("#caixa-data").fill(dataHoje);
   await expect(page.getByText("Carregando...")).toHaveCount(0, { timeout: 15_000 });
   await expect(page.getByRole("heading", { name: "Itens do dia" })).toBeVisible();
 

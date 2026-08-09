@@ -2,7 +2,7 @@
 
 // Admin — Caixa do dia. Task T12 Step 3.
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { api } from "@/lib/api";
 import { mensagemErro } from "@/lib/auth";
 import { Card, Titulo, Aviso } from "@/components/ui";
@@ -60,22 +60,32 @@ export default function CaixaPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
 
+  // Mesma guarda contra corrida de `AgendaAdmin.tsx#carregar`: sem isso, a
+  // resposta da requisição do mount (data default = hoje) pode resolver
+  // DEPOIS da requisição disparada pela troca de data no campo "#caixa-data",
+  // sobrescrevendo `caixa` com os itens do dia errado mesmo com o input já
+  // mostrando a data certa.
+  const requisicaoAtual = useRef(0);
+
   useEffect(() => {
     carregar(data);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
   async function carregar(d: string) {
+    const idRequisicao = ++requisicaoAtual.current;
     setCarregando(true);
     setErro(null);
     try {
       const r = (await api.caixa(d)) as Caixa;
+      if (requisicaoAtual.current !== idRequisicao) return; // resposta velha — descarta
       setCaixa(r);
     } catch (e) {
+      if (requisicaoAtual.current !== idRequisicao) return;
       setErro(mensagemErro(e, "Não foi possível carregar o caixa."));
       setCaixa(null);
     } finally {
-      setCarregando(false);
+      if (requisicaoAtual.current === idRequisicao) setCarregando(false);
     }
   }
 
