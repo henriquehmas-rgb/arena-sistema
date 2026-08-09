@@ -186,7 +186,7 @@ async def recuperar_senha(dados: RecuperarIn, db: AsyncSession = Depends(get_db)
     cliente = await db.scalar(select(Cliente).where(Cliente.email == dados.email))
     if cliente is not None:
         token = auth_service.criar_token_redefinicao(cliente.id)
-        link = f"{settings.frontend_url}/redefinir-senha?token={token}"
+        link = f"{settings.frontend_url}/recuperar?token={token}"
         html = (
             f"<p>Olá {cliente.nome},</p>"
             f"<p>Para redefinir sua senha da Arena Cacerense, acesse: "

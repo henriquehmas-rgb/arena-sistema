@@ -4,7 +4,10 @@ e `POST /reservas/{id}/cancelar-admin`.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
+from datetime import time as dt_time
+from datetime import timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import select
@@ -481,3 +484,102 @@ async def test_rota_listar_staff_filtra_por_cliente_id(client, db, staff_admin_l
     corpo_b = resp_b.json()
     assert corpo_b["total"] == 1
     assert datetime.fromisoformat(corpo_b["itens"][0]["inicio"]) == base + timedelta(hours=2)
+
+
+# --- achado na revisão final de branch: preço/duração podiam ser burlados ---
+# passando um `inicio`/`fim` que não bate com nenhum slot real da grade ------
+
+
+async def test_criar_online_horario_desalinhado_levanta_slot_invalido(db):
+    """Sem `slot_valido`, `preco_para` resolveria a banda só pelo horário de
+    início — um payload como 08:00->23:00 (a "duração" de um dia inteiro)
+    seria cobrado como se fosse 1h. `[inicio,fim)` precisa bater exatamente
+    com um dos horários que a grade (`_horarios_do_recurso`) gera."""
+    recurso = await criar_recurso(db)
+    await criar_faixa_padrao(db, recurso)
+    cliente = await criar_cliente(db)
+    inicio, _ = horario_futuro()
+    fim_absurdo = inicio + timedelta(hours=15)  # não é nenhum slot de 1h da grade
+
+    with pytest.raises(reservas_service.SlotInvalidoError):
+        await reservas_service.criar_online(db, cliente, recurso.id, inicio, fim_absurdo)
+
+
+async def test_criar_online_fora_da_janela_levanta_slot_invalido(db):
+    """`GET /disponibilidade` já rejeitava datas além de `janela_campo_dias`
+    (14 dias) — `POST /reservas` não checava isso, então um cliente podia
+    reservar (e pagar) uma data que nunca aparecia na grade pública."""
+    recurso = await criar_recurso(db)
+    await criar_faixa_padrao(db, recurso)
+    cliente = await criar_cliente(db)
+    inicio, fim = horario_futuro(dias=settings.janela_campo_dias + 5)
+
+    with pytest.raises(reservas_service.SlotInvalidoError):
+        await reservas_service.criar_online(db, cliente, recurso.id, inicio, fim)
+
+
+async def test_rota_criar_reserva_horario_desalinhado_422(client, db, cliente_logado):
+    recurso = await criar_recurso(db, nome="Campo T6 Slot Invalido")
+    await criar_faixa_padrao(db, recurso)
+    inicio, _ = horario_futuro()
+    fim_absurdo = inicio + timedelta(hours=15)
+
+    resp = await client.post(
+        "/api/v1/reservas",
+        json={
+            "recurso_id": recurso.id,
+            "inicio": inicio.isoformat(),
+            "fim": fim_absurdo.isoformat(),
+        },
+        headers=cliente_logado["headers"],
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["detail"] == "slot_invalido"
+
+
+# --- achado na revisão final de branch: GET /reservas?de&ate sempre vazio --
+# porque `de`/`ate` eram tratados como `datetime` cru (meia-noite UTC) em
+# vez de datas locais expandidas pro dia inteiro — a agenda do admin nunca
+# encontrava a reserva do próprio dia selecionado. -----------------------
+
+
+async def test_rota_listar_staff_filtra_por_data_do_dia(client, db, staff_admin_logado):
+    tz = ZoneInfo(settings.tz_local)
+    hoje_local = datetime.now(tz).date()
+    recurso = await criar_recurso(db, nome="Campo T6 Filtro Data")
+
+    inicio_hoje_local = datetime.combine(hoje_local, dt_time(20, 0), tzinfo=tz)
+    inicio_hoje_utc = inicio_hoje_local.astimezone(timezone.utc)
+    db.add(
+        Reserva(
+            recurso_id=recurso.id,
+            inicio=inicio_hoje_utc,
+            fim=inicio_hoje_utc + timedelta(hours=1),
+            status=ReservaStatus.confirmada,
+            origem=ReservaOrigem.balcao,
+            valor_centavos=PRECO_PADRAO_CENTAVOS,
+        )
+    )
+    # Reserva de outro dia (amanhã) — não deve aparecer no filtro de hoje.
+    inicio_amanha_utc = inicio_hoje_utc + timedelta(days=1)
+    db.add(
+        Reserva(
+            recurso_id=recurso.id,
+            inicio=inicio_amanha_utc,
+            fim=inicio_amanha_utc + timedelta(hours=1),
+            status=ReservaStatus.confirmada,
+            origem=ReservaOrigem.balcao,
+            valor_centavos=PRECO_PADRAO_CENTAVOS,
+        )
+    )
+    await db.flush()
+
+    data_str = hoje_local.isoformat()
+    resp = await client.get(
+        f"/api/v1/reservas?recurso_id={recurso.id}&de={data_str}&ate={data_str}",
+        headers=staff_admin_logado["headers"],
+    )
+    assert resp.status_code == 200, resp.text
+    corpo = resp.json()
+    assert corpo["total"] == 1
+    assert datetime.fromisoformat(corpo["itens"][0]["inicio"]) == inicio_hoje_utc

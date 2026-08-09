@@ -223,6 +223,11 @@ async def test_recuperar_e_redefinir_senha(client, monkeypatch):
     assert resp.status_code == 204
     assert capturado["para"] == email
     assert "token=" in capturado["html"]
+    # Achado na revisão final de branch: o link apontava pra
+    # `/redefinir-senha`, uma rota que não existe no frontend (a página real
+    # é `/recuperar?token=...`) — todo link de recuperação de senha 404ava.
+    assert "/recuperar?token=" in capturado["html"]
+    assert "/redefinir-senha" not in capturado["html"]
 
     token = capturado["html"].split("token=")[1].split('"')[0]
 

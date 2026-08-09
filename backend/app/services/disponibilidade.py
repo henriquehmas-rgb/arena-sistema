@@ -41,6 +41,45 @@ def _horarios_do_recurso(recurso: Recurso) -> list[tuple[int, int]]:
     return PERIODOS_QUIOSQUE
 
 
+def slot_valido(recurso: Recurso, inicio: datetime, fim: datetime) -> bool:
+    """True se `[inicio, fim)` corresponde exatamente a um dos horários que
+    `_horarios_do_recurso` geraria — usado para rejeitar em `POST /reservas`
+    um `inicio`/`fim` arbitrário que não bate com nenhum slot real (preço e
+    janela só fazem sentido para os horários que a grade realmente oferece;
+    sem essa checagem, `preco_para` resolveria a banda pelo horário de
+    início e um payload como 08:00→23:00 seria cobrado como 1h)."""
+    tz = ZoneInfo(settings.tz_local)
+    inicio_local = inicio.astimezone(tz)
+    fim_local = fim.astimezone(tz)
+    if inicio_local.date() != fim_local.date():
+        return False
+    data_local = inicio_local.date()
+    for hora_inicio, hora_fim in _horarios_do_recurso(recurso):
+        esperado_inicio = datetime.combine(data_local, time(hora_inicio, 0), tzinfo=tz)
+        esperado_fim = datetime.combine(data_local, time(hora_fim, 0), tzinfo=tz)
+        if inicio_local == esperado_inicio and fim_local == esperado_fim:
+            return True
+    return False
+
+
+def dentro_da_janela_online(recurso: Recurso, inicio: datetime) -> bool:
+    """True se `inicio` está dentro da janela de reserva online do
+    `recurso` (`settings.janela_campo_dias`/`janela_quiosque_dias`, contados
+    a partir de hoje no fuso local) — mesma regra que `GET /disponibilidade`
+    já aplica para listar, agora também aplicada em `POST /reservas` pra que
+    um cliente não consiga reservar (e pagar) uma data fora da janela
+    exibida na grade."""
+    tz = ZoneInfo(settings.tz_local)
+    hoje_local = datetime.now(tz).date()
+    inicio_local_date = inicio.astimezone(tz).date()
+    janela_dias = (
+        settings.janela_campo_dias
+        if recurso.tipo == TipoRecurso.campo
+        else settings.janela_quiosque_dias
+    )
+    return (inicio_local_date - hoje_local).days <= janela_dias
+
+
 async def slots_do_dia(db: AsyncSession, recurso: Recurso, data_local: date) -> list[Slot]:
     """Gera os slots do `recurso` no `data_local` (data no fuso local).
 

@@ -120,8 +120,8 @@ export default function AgendaAdmin() {
             if (reserva) {
               reservaMatch = reserva;
               const origem = (reserva as Reserva & { origem?: string }).origem;
-              if (origem === "assinatura") tipo = "mensalista";
-              else if (reserva.status === "pendente_pagamento" || reserva.status === "pendente") tipo = "pendente";
+              if (origem === "mensalista") tipo = "mensalista";
+              else if (reserva.status === "pendente_pagamento") tipo = "pendente";
               else tipo = "confirmada";
             } else {
               const bloqueio = bloqueios.find((b) => b.inicio === slot.inicio || (b.inicio <= slot.inicio && b.fim > slot.inicio));

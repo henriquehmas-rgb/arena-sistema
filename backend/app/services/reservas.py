@@ -35,7 +35,7 @@ from app.models.entities import Cliente, Pagamento, Recurso, Reserva, Staff
 from app.models.enums import PagamentoStatus, ReservaOrigem, ReservaStatus
 from app.schemas.reservas import ReservaBalcaoCriar
 from app.services import pagamentos
-from app.services.disponibilidade import esta_livre
+from app.services.disponibilidade import dentro_da_janela_online, esta_livre, slot_valido
 from app.services.precos import preco_para
 
 
@@ -43,6 +43,14 @@ class SlotOcupadoError(Exception):
     """Slot já ocupado — pela checagem otimista (`esta_livre`) ou pela
     constraint EXCLUDE do banco (corrida real entre requisições
     concorrentes). O router converte para HTTP 409."""
+
+
+class SlotInvalidoError(Exception):
+    """`inicio`/`fim` não corresponde a um horário real da grade do
+    recurso, ou cai fora da janela de reserva online — sem essa checagem,
+    `preco_para` resolveria o preço só pelo horário de início e um payload
+    arbitrário (ex: 08:00→23:00) seria cobrado como se fosse 1h. O router
+    converte para HTTP 422."""
 
 
 class ForaDaJanelaError(Exception):
@@ -90,6 +98,9 @@ async def criar_online(
     sempre recalculado via `preco_para` (nunca aceito do chamador)."""
     recurso = await _buscar_recurso_ou_404(db, recurso_id)
 
+    if not slot_valido(recurso, inicio, fim) or not dentro_da_janela_online(recurso, inicio):
+        raise SlotInvalidoError()
+
     if not await esta_livre(db, recurso_id, inicio, fim):
         raise SlotOcupadoError()
 
@@ -122,6 +133,12 @@ async def criar_balcao(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="cliente_nao_encontrado"
             )
+
+    # Sem checagem de janela aqui (staff pode agendar fixos/eventos além da
+    # janela online do cliente), mas o horário ainda precisa bater com um
+    # slot real da grade — mesmo motivo de `criar_online`.
+    if not slot_valido(recurso, dados.inicio, dados.fim):
+        raise SlotInvalidoError()
 
     if not await esta_livre(db, dados.recurso_id, dados.inicio, dados.fim):
         raise SlotOcupadoError()
@@ -214,7 +231,10 @@ async def listar_staff(
     if de is not None:
         filtros.append(Reserva.inicio >= de)
     if ate is not None:
-        filtros.append(Reserva.inicio <= ate)
+        # `ate` já vem como o limite superior exclusivo (meia-noite local do
+        # dia seguinte ao último dia do período) — ver
+        # `routers.reservas._limites_periodo_utc`.
+        filtros.append(Reserva.inicio < ate)
     if status_ is not None:
         filtros.append(Reserva.status == status_)
     if cliente_id is not None:

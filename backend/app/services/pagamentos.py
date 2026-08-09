@@ -62,10 +62,19 @@ def _descricao(reserva: Reserva) -> str:
     return f"Reserva #{reserva.id} — {reserva.recurso.nome}"
 
 
-async def _buscar_pagamento_por_order(db: AsyncSession, order_id: str) -> Pagamento | None:
-    return (
-        await db.execute(select(Pagamento).where(Pagamento.pagarme_order_id == order_id))
-    ).scalar_one_or_none()
+async def _buscar_pagamento_por_order(
+    db: AsyncSession, order_id: str, *, for_update: bool = False
+) -> Pagamento | None:
+    stmt = select(Pagamento).where(Pagamento.pagarme_order_id == order_id)
+    if for_update:
+        # Trava a linha até o fim da transação: webhook, reconciliação e o
+        # polling ativo de `GET /pagamentos/{id}` podem chegar aqui pra o
+        # mesmo `order_id` quase ao mesmo tempo — sem lock, duas chamadas
+        # concorrentes leem `status == pendente` cada uma na sua própria
+        # transação, e as duas passam pelo guard de idempotência abaixo
+        # (double-confirm: e-mail duplicado, `pago_em` sobrescrito).
+        stmt = stmt.with_for_update()
+    return (await db.execute(stmt)).scalar_one_or_none()
 
 
 async def _notificar_confirmacao(db: AsyncSession, reserva: Reserva) -> None:
@@ -154,7 +163,7 @@ async def confirmar_por_order(db: AsyncSession, order_id: str) -> None:
     `order_id`. Idempotente: se o pagamento já está `pago`, não faz nada
     (nem reenviar e-mail) — chamável tanto pelo webhook quanto pela
     reconciliação periódica sem risco de duplo processamento."""
-    pagamento = await _buscar_pagamento_por_order(db, order_id)
+    pagamento = await _buscar_pagamento_por_order(db, order_id, for_update=True)
     if pagamento is None:
         logger.warning("confirmar_por_order: nenhum pagamento com order_id=%s", order_id)
         return

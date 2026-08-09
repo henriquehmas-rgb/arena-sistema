@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from app.models.enums import ReservaStatus, ReservaOrigem, MetodoPagamento
 
 
@@ -7,6 +7,12 @@ class ReservaCriar(BaseModel):
     recurso_id: int
     inicio: datetime
     fim: datetime
+
+    @model_validator(mode="after")
+    def _fim_apos_inicio(self) -> "ReservaCriar":
+        if self.fim <= self.inicio:
+            raise ValueError("fim deve ser depois de inicio")
+        return self
 
 
 class ReservaBalcaoCriar(ReservaCriar):

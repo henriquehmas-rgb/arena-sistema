@@ -15,7 +15,8 @@ substituí-lo pela implementação completa — é o que este módulo faz agora.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -37,6 +38,32 @@ from app.services import reservas as reservas_service
 from app.services.precos import PrecoNaoConfigurado
 
 router = APIRouter()
+
+
+def _limites_periodo_utc(
+    de: date | None, ate: date | None
+) -> tuple[datetime | None, datetime | None]:
+    """Converte `de`/`ate` (datas locais, inclusive nas duas pontas — mesma
+    convenção de `app.routers.relatorios`) pros limites `[inicio_utc,
+    fim_utc)` que `listar_staff` usa pra filtrar. Antes desta função, o
+    router aceitava `de`/`ate` como `datetime` cru: um `de=2026-08-13` do
+    frontend virava meia-noite UTC (não meia-noite local), e o filtro
+    `inicio <= ate` (também meia-noite) excluía o dia inteiro — a agenda do
+    admin sempre voltava vazia."""
+    tz = ZoneInfo(settings.tz_local)
+    inicio_utc = (
+        datetime.combine(de, time(0, 0), tzinfo=tz).astimezone(timezone.utc)
+        if de is not None
+        else None
+    )
+    fim_utc = (
+        (datetime.combine(ate, time(0, 0), tzinfo=tz) + timedelta(days=1)).astimezone(
+            timezone.utc
+        )
+        if ate is not None
+        else None
+    )
+    return inicio_utc, fim_utc
 
 
 def _para_out(reserva: Reserva) -> ReservaOut:
@@ -66,6 +93,10 @@ async def criar_reserva(
         reserva = await reservas_service.criar_online(
             db, cliente, dados.recurso_id, dados.inicio, dados.fim
         )
+    except reservas_service.SlotInvalidoError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="slot_invalido"
+        ) from None
     except reservas_service.SlotOcupadoError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="slot_ocupado"
@@ -109,8 +140,8 @@ async def cancelar_reserva(
 @router.get("", response_model=ReservaListaOut)
 async def listar_reservas_staff(
     recurso_id: int | None = Query(default=None),
-    de: datetime | None = Query(default=None),
-    ate: datetime | None = Query(default=None),
+    de: date | None = Query(default=None),
+    ate: date | None = Query(default=None),
     status_filtro: ReservaStatus | None = Query(default=None, alias="status"),
     cliente_id: int | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -118,11 +149,12 @@ async def listar_reservas_staff(
     _staff: Staff = Depends(get_staff_atual),
     db: AsyncSession = Depends(get_db),
 ) -> ReservaListaOut:
+    inicio_utc, fim_utc = _limites_periodo_utc(de, ate)
     itens, total = await reservas_service.listar_staff(
         db,
         recurso_id=recurso_id,
-        de=de,
-        ate=ate,
+        de=inicio_utc,
+        ate=fim_utc,
         status_=status_filtro,
         cliente_id=cliente_id,
         limit=limit,
@@ -139,6 +171,10 @@ async def criar_reserva_balcao(
 ) -> ReservaOut:
     try:
         reserva = await reservas_service.criar_balcao(db, staff, dados)
+    except reservas_service.SlotInvalidoError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="slot_invalido"
+        ) from None
     except reservas_service.SlotOcupadoError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="slot_ocupado"
