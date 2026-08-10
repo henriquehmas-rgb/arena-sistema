@@ -167,6 +167,7 @@ export default function RelatoriosPage() {
             <Titulo as="h2">Faturamento por recurso</Titulo>
             {porRecurso.length === 0 && <p>Sem dados no período.</p>}
             {porRecurso.length > 0 && (
+              <div className="ac-tabela-wrap">
               <table style={tableStyle}>
                 <thead>
                   <tr>
@@ -183,6 +184,7 @@ export default function RelatoriosPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </Card>
 
@@ -199,6 +201,7 @@ export default function RelatoriosPage() {
           <Titulo as="h2">Ocupação por recurso</Titulo>
           {ocupacao.por_recurso.length === 0 && <p>Sem dados no período.</p>}
           {ocupacao.por_recurso.length > 0 && (
+            <div className="ac-tabela-wrap">
             <table style={tableStyle}>
               <thead>
                 <tr>
@@ -219,6 +222,7 @@ export default function RelatoriosPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </Card>
       )}

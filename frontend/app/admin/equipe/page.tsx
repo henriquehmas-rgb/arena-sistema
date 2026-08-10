@@ -145,6 +145,7 @@ export default function EquipePage() {
 
       {equipe !== null && equipe.length > 0 && (
         <Card>
+          <div className="ac-tabela-wrap">
           <table style={tableStyle}>
             <thead>
               <tr>
@@ -184,6 +185,7 @@ export default function EquipePage() {
               ))}
             </tbody>
           </table>
+          </div>
         </Card>
       )}
     </>

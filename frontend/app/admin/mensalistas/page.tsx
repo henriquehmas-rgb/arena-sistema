@@ -316,6 +316,7 @@ export default function MensalistasPage() {
 
       {ordenados.length > 0 && (
         <Card>
+          <div className="ac-tabela-wrap">
           <table style={tableStyle}>
             <thead>
               <tr>
@@ -374,6 +375,7 @@ export default function MensalistasPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </Card>
       )}
     </>

@@ -135,6 +135,7 @@ export default function CaixaPage() {
             <Titulo as="h2">Itens do dia</Titulo>
             {itens.length === 0 && <p>Nenhum lançamento nesta data.</p>}
             {itens.length > 0 && (
+              <div className="ac-tabela-wrap">
               <table style={tableStyle}>
                 <thead>
                   <tr>
@@ -157,6 +158,7 @@ export default function CaixaPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </Card>
         </>

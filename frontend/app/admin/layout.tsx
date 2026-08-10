@@ -89,67 +89,32 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     router.push("/admin/entrar");
   }
 
-  // Estilos do "chrome" admin (sidebar/shell) ficam inline aqui: não editamos
-  // globals.css (frozen, T10) para não colidir com outras tracks da Wave 2.
-  // Componentes de conteúdo (Card, Botao, Titulo, Badge...) continuam vindo
-  // de components/ui.tsx normalmente.
+  // Estilos do "chrome" admin (sidebar/shell) vêm das classes `.ac-admin-*`
+  // em globals.css — inclui os breakpoints que fazem a sidebar virar uma
+  // barra horizontal rolável em telas estreitas. Componentes de conteúdo
+  // (Card, Botao, Titulo, Badge...) continuam vindo de components/ui.tsx
+  // normalmente.
   return (
-    <div style={{ display: "flex", minHeight: "calc(100vh - 68px)", gap: 0 }}>
-      <aside
-        style={{
-          width: 220,
-          flex: "0 0 220px",
-          background: "var(--tinta)",
-          color: "var(--branco)",
-          padding: "20px 16px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 4,
-        }}
-      >
-        <p style={{ opacity: 0.7, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em", margin: "0 0 12px" }}>
+    <div className="ac-admin-shell">
+      <aside className="ac-admin-sidebar">
+        <p className="ac-admin-sidebar-titulo">
           {papel === "admin" ? "Administrador" : "Atendente"}
         </p>
-        <nav style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
+        <nav className="ac-admin-nav">
           {itensVisiveis.map((item) => {
             const ativo = pathname === item.href;
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 8,
-                  color: "var(--branco)",
-                  textDecoration: "none",
-                  fontWeight: ativo ? 700 : 500,
-                  background: ativo ? "rgba(255,255,255,0.14)" : "transparent",
-                }}
-              >
+              <Link key={item.href} href={item.href} className={ativo ? "ativo" : ""}>
                 {item.rotulo}
               </Link>
             );
           })}
         </nav>
-        <button
-          onClick={handleSair}
-          type="button"
-          style={{
-            marginTop: 16,
-            padding: "10px 12px",
-            borderRadius: 8,
-            border: "1.5px solid rgba(255,255,255,0.35)",
-            background: "transparent",
-            color: "var(--branco)",
-            cursor: "pointer",
-            fontFamily: "inherit",
-            fontWeight: 600,
-          }}
-        >
+        <button onClick={handleSair} type="button" className="ac-admin-sair">
           Sair
         </button>
       </aside>
-      <div style={{ flex: 1, padding: "24px 28px", maxWidth: 1200 }}>{children}</div>
+      <div className="ac-admin-content">{children}</div>
     </div>
   );
 }

@@ -227,6 +227,7 @@ export default function PrecosPage() {
             {regras.length === 0 && <p>Nenhuma regra de preço cadastrada.</p>}
 
             {regras.length > 0 && (
+              <div className="ac-tabela-wrap">
               <table style={tableStyle}>
                 <thead>
                   <tr>
@@ -273,6 +274,7 @@ export default function PrecosPage() {
                   )}
                 </tbody>
               </table>
+              </div>
             )}
 
             <div style={{ marginTop: 16 }}>
