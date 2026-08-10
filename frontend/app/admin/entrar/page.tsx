@@ -44,7 +44,7 @@ function FormularioEntrarStaff() {
   }
 
   return (
-    <div style={{ maxWidth: 420, margin: "48px auto" }}>
+    <div style={{ maxWidth: 420, margin: "48px auto", padding: "0 16px" }}>
       <Card className="ac-form-card">
         <Titulo as="h2">Painel Arena Cacerense</Titulo>
         {erro && <Aviso tipo="erro">{erro}</Aviso>}

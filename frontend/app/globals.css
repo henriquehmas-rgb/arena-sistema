@@ -29,7 +29,10 @@ a {
   color: inherit;
 }
 
-main {
+/* Container do portal público — NÃO se aplica às rotas /admin (ver
+   components/PageShell.tsx), que usam o app-shell full-bleed
+   `.ac-admin-shell` abaixo. */
+.ac-container {
   max-width: 1080px;
   margin: 0 auto;
   padding: 24px 16px 64px;
@@ -56,7 +59,7 @@ main {
     font-size: 1.15rem;
   }
 
-  main {
+  .ac-container {
     padding: 16px 12px 48px;
   }
 }

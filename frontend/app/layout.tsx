@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { kanit, saira } from "@/lib/fonts";
 import HeaderNav from "@/components/HeaderNav";
+import PageShell from "@/components/PageShell";
 import "./globals.css";
 
 export const metadata = {
@@ -21,7 +22,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           </Link>
           <HeaderNav />
         </header>
-        <main>{children}</main>
+        <PageShell>{children}</PageShell>
       </body>
     </html>
   );
