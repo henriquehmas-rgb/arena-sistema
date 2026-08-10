@@ -24,6 +24,7 @@ from app.schemas.auth import (
 )
 from app.services import auth as auth_service
 from app.services import email as email_service
+from app.services import email_templates
 from app.services import ratelimit
 
 logger = logging.getLogger("app.auth")
@@ -86,6 +87,17 @@ async def cadastro_cliente(
 
     access, refresh = auth_service.criar_tokens(str(cliente.id), "cliente")
     _definir_cookie_refresh(response, refresh)
+
+    assunto, html = email_templates.boas_vindas_email(cliente.nome)
+    try:
+        await email_service.enviar(cliente.email, assunto, html)
+    except Exception:
+        # Best-effort, igual aos demais e-mails transacionais: uma falha de
+        # SMTP não pode impedir a criação da conta.
+        logger.exception(
+            "cadastro_cliente: falha ao enviar e-mail de boas-vindas (cliente_id=%s)",
+            cliente.id,
+        )
 
     return ClienteCadastroOut(
         cliente=ClienteCadastroResumo.model_validate(cliente),
@@ -229,14 +241,9 @@ async def recuperar_senha(
     if cliente is not None:
         token = auth_service.criar_token_redefinicao(cliente.id)
         link = f"{settings.frontend_url}/recuperar?token={token}"
-        html = (
-            f"<p>Olá {cliente.nome},</p>"
-            f"<p>Para redefinir sua senha da Arena Cacerense, acesse: "
-            f'<a href="{link}">{link}</a></p>'
-            "<p>Se você não solicitou, ignore este e-mail.</p>"
-        )
+        assunto, html = email_templates.redefinicao_senha_email(cliente.nome, link)
         try:
-            await email_service.enviar(cliente.email, "Redefinição de senha - Arena Cacerense", html)
+            await email_service.enviar(cliente.email, assunto, html)
         except Exception:
             # Best-effort, igual à confirmação de pagamento
             # (services.pagamentos._notificar_confirmacao): uma falha de

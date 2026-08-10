@@ -32,6 +32,7 @@ from app.config import settings
 from app.models.entities import Assinatura, Bloqueio, Cliente, Recurso, Reserva, Staff
 from app.models.enums import AssinaturaStatus, ReservaOrigem, ReservaStatus
 from app.schemas.assinaturas import AssinaturaCriar
+from app.services import email, email_templates
 
 try:
     from app.services.pagarme import get_pagarme
@@ -408,6 +409,18 @@ async def processar_evento_sub(db: AsyncSession, evento: dict) -> None:
         if falhas >= FALHAS_LIMITE:
             assinatura.status = AssinaturaStatus.inadimplente
             await db.flush()
+            # Best-effort, igual aos demais e-mails transacionais: uma falha
+            # de SMTP não pode interromper o processamento do evento (o
+            # status já foi persistido acima).
+            assunto, html = email_templates.cobranca_falhou_email(assinatura.cliente.nome)
+            try:
+                await email.enviar(assinatura.cliente.email, assunto, html)
+            except Exception:
+                logger.exception(
+                    "processar_evento_sub: falha ao enviar e-mail de cobrança falhou "
+                    "(assinatura_id=%s)",
+                    assinatura.id,
+                )
     else:
         logger.info("processar_evento_sub: evento tipo=%r ignorado", tipo)
 

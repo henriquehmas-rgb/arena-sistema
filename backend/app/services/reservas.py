@@ -23,6 +23,7 @@ toda, não um por operação).
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
@@ -34,9 +35,11 @@ from app.config import settings
 from app.models.entities import Cliente, Pagamento, Recurso, Reserva, Staff
 from app.models.enums import PagamentoStatus, ReservaOrigem, ReservaStatus
 from app.schemas.reservas import ReservaBalcaoCriar
-from app.services import pagamentos
+from app.services import email, email_templates, pagamentos
 from app.services.disponibilidade import dentro_da_janela_online, esta_livre, slot_valido
 from app.services.precos import preco_para
+
+logger = logging.getLogger("app.reservas")
 
 
 class SlotOcupadoError(Exception):
@@ -173,6 +176,23 @@ async def criar_balcao(
     return reserva
 
 
+async def _notificar_cancelamento(db: AsyncSession, reserva: Reserva, cliente: Cliente | None) -> None:
+    """E-mail de confirmação de cancelamento — best-effort, mesmo padrão de
+    `pagamentos._notificar_confirmacao`: uma falha de SMTP não pode
+    interromper o cancelamento em si (já persistido antes desta chamada)."""
+    if cliente is None:
+        return
+    assunto, html = email_templates.cancelamento_reserva_email(
+        cliente.nome, reserva.id, reserva.recurso.nome, f"{reserva.inicio:%d/%m/%Y %H:%M}"
+    )
+    try:
+        await email.enviar(cliente.email, assunto, html)
+    except Exception:
+        logger.exception(
+            "reservas: falha ao enviar e-mail de cancelamento (reserva_id=%s)", reserva.id
+        )
+
+
 async def cancelar_cliente(
     db: AsyncSession, cliente: Cliente, reserva_id: int
 ) -> Reserva:
@@ -195,6 +215,7 @@ async def cancelar_cliente(
     reserva.status = ReservaStatus.cancelada
     await pagamentos.estornar_se_pago(db, reserva)
     await db.flush()
+    await _notificar_cancelamento(db, reserva, cliente)
     return reserva
 
 
@@ -208,6 +229,8 @@ async def cancelar_admin(
     if estornar:
         await pagamentos.estornar_se_pago(db, reserva)
     await db.flush()
+    cliente = await db.get(Cliente, reserva.cliente_id) if reserva.cliente_id is not None else None
+    await _notificar_cancelamento(db, reserva, cliente)
     return reserva
 
 

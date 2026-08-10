@@ -39,6 +39,7 @@ from app.config import settings
 from app.models.entities import Cliente, Pagamento, Reserva
 from app.models.enums import MetodoPagamento, PagamentoStatus, ReservaStatus
 from app.services import email
+from app.services import email_templates
 from app.services.pagarme import get_pagarme
 
 logger = logging.getLogger("app.pagamentos")
@@ -88,13 +89,11 @@ async def _notificar_confirmacao(db: AsyncSession, reserva: Reserva) -> None:
     cliente = await db.get(Cliente, reserva.cliente_id)
     if cliente is None:
         return
-    html = (
-        f"<p>Olá {cliente.nome},</p>"
-        f"<p>Seu pagamento da reserva #{reserva.id} "
-        f"({reserva.recurso.nome}, {reserva.inicio:%d/%m/%Y %H:%M}) foi confirmado.</p>"
+    assunto, html = email_templates.pagamento_confirmado_email(
+        cliente.nome, reserva.id, reserva.recurso.nome, f"{reserva.inicio:%d/%m/%Y %H:%M}"
     )
     try:
-        await email.enviar(cliente.email, "Pagamento confirmado — Arena Cacerense", html)
+        await email.enviar(cliente.email, assunto, html)
     except Exception:
         logger.exception(
             "pagamentos: falha ao enviar e-mail de confirmação (reserva_id=%s)", reserva.id
