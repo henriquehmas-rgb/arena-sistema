@@ -4,6 +4,7 @@ recuperação/redefinição de senha."""
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
@@ -409,6 +410,18 @@ async def test_redefinir_senha_invalida_refresh_token_antigo(client, monkeypatch
     )
     assert resp.status_code == 401
 
+    # `sessoes_invalidas_apos` compara `iat` (segundo inteiro, truncado pelo
+    # PyJWT) contra o instante da invalidação — dentro do MESMO segundo,
+    # não dá pra distinguir com certeza "token emitido antes" de "token
+    # emitido depois" (ambiguidade inerente à granularidade de 1s, não um
+    # bug: em uso real, resetar senha e logar de novo nunca cai no mesmo
+    # segundo, já que tem digitação humana no meio). Sem esse `sleep`, o
+    # login abaixo podia cair no mesmo segundo da invalidação acima e ser
+    # rejeitado por engano — erra pro lado seguro (invalida demais) de
+    # propósito, então quem paga o preço da ambiguidade é o teste, não o
+    # usuário.
+    await asyncio.sleep(1.1)
+
     # Um novo login gera um refresh token novo, que funciona normalmente.
     resp = await client.post(
         "/api/v1/auth/cliente/login", json={"email": email, "senha": "senhaNova1"}
@@ -436,6 +449,30 @@ async def test_recuperar_email_inexistente_ainda_204(client, monkeypatch, caplog
     assert chamou["sim"] is False
 
 
+async def test_recuperar_senha_falha_no_envio_ainda_204(client, monkeypatch, caplog):
+    """Achado ao ligar o Resend em produção: `email_service.enviar` não
+    estava protegido em `/recuperar` — uma falha de SMTP (ex: domínio ainda
+    propagando DNS) virava 500 em vez de 204, além de vazar (via status
+    code) se o e-mail está cadastrado ou não."""
+    email = _email("falha-envio")
+    resp = await client.post(
+        "/api/v1/auth/cliente/cadastro",
+        json={"nome": "Falha Envio", "email": email, "senha": "senha12345", "celular": "65999990007"},
+    )
+    assert resp.status_code == 201
+
+    async def _enviar_com_falha(para, assunto, html):
+        raise ConnectionError("SMTP indisponível (simulado)")
+
+    monkeypatch.setattr("app.routers.auth.email_service.enviar", _enviar_com_falha)
+
+    with caplog.at_level("ERROR", logger="app.auth"):
+        resp = await client.post("/api/v1/auth/recuperar", json={"email": email})
+
+    assert resp.status_code == 204
+    assert any("falha ao enviar e-mail" in r.getMessage() for r in caplog.records)
+
+
 async def test_email_noop_loga_quando_smtp_vazio(caplog):
     """`services.email.enviar` deve ser no-op logando quando
     `settings.smtp_host` está vazio (padrão em dev/test)."""
@@ -458,8 +495,9 @@ async def test_email_com_smtp_configurado_envia_via_thread(monkeypatch):
     chamadas = {}
 
     class _SMTPFake:
-        def __init__(self, host):
+        def __init__(self, host, port):
             chamadas["host"] = host
+            chamadas["port"] = port
 
         def __enter__(self):
             return self
@@ -476,20 +514,64 @@ async def test_email_com_smtp_configurado_envia_via_thread(monkeypatch):
         def sendmail(self, remetente, destinatarios, corpo):
             chamadas["sendmail"] = (remetente, destinatarios, corpo)
 
+    # `smtp_user` (login) != `smtp_from` (remetente do e-mail) de propósito
+    # — reproduz o Resend, onde o usuário SMTP é a constante "resend", não
+    # um e-mail válido pra usar como "De".
     monkeypatch.setattr(email_service.settings, "smtp_host", "smtp.teste.local")
-    monkeypatch.setattr(email_service.settings, "smtp_user", "arena@teste.com")
+    monkeypatch.setattr(email_service.settings, "smtp_port", 587)
+    monkeypatch.setattr(email_service.settings, "smtp_user", "resend")
     monkeypatch.setattr(email_service.settings, "smtp_pass", "segredo")
+    monkeypatch.setattr(email_service.settings, "smtp_from", "reservas@arenacacerense.com.br")
     monkeypatch.setattr(email_service.smtplib, "SMTP", _SMTPFake)
 
     await email_service.enviar("cliente@teste.com", "Assunto Teste", "<p>oi</p>")
 
     assert chamadas["host"] == "smtp.teste.local"
+    assert chamadas["port"] == 587
     assert chamadas["starttls"] is True
-    assert chamadas["login"] == ("arena@teste.com", "segredo")
+    assert chamadas["login"] == ("resend", "segredo")
     remetente, destinatarios, corpo = chamadas["sendmail"]
-    assert remetente == "arena@teste.com"
+    assert remetente == "reservas@arenacacerense.com.br"
     assert destinatarios == ["cliente@teste.com"]
     assert "Assunto Teste" in corpo
+
+
+async def test_email_sem_smtp_from_usa_smtp_user_como_remetente(monkeypatch):
+    """Compatibilidade: se `smtp_from` não for configurado, cai de volta
+    pro comportamento antigo (remetente = `smtp_user`) — cobre um `.env`
+    onde o usuário SMTP já é um e-mail válido (ex.: Gmail, SES)."""
+    from app.services import email as email_service
+
+    chamadas = {}
+
+    class _SMTPFake:
+        def __init__(self, host, port):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def starttls(self):
+            pass
+
+        def login(self, user, senha):
+            pass
+
+        def sendmail(self, remetente, destinatarios, corpo):
+            chamadas["remetente"] = remetente
+
+    monkeypatch.setattr(email_service.settings, "smtp_host", "smtp.teste.local")
+    monkeypatch.setattr(email_service.settings, "smtp_user", "arena@teste.com")
+    monkeypatch.setattr(email_service.settings, "smtp_pass", "segredo")
+    monkeypatch.setattr(email_service.settings, "smtp_from", "")
+    monkeypatch.setattr(email_service.smtplib, "SMTP", _SMTPFake)
+
+    await email_service.enviar("cliente@teste.com", "Assunto", "<p>oi</p>")
+
+    assert chamadas["remetente"] == "arena@teste.com"
 
 
 # ---------------------------------------------------------------------------

@@ -19,16 +19,17 @@ logger = logging.getLogger("app.email")
 
 
 def _enviar_sincrono(para: str, assunto: str, html: str) -> None:
+    remetente = settings.smtp_from or settings.smtp_user
     msg = MIMEText(html, "html", "utf-8")
     msg["Subject"] = assunto
-    msg["From"] = settings.smtp_user
+    msg["From"] = remetente
     msg["To"] = para
 
-    with smtplib.SMTP(settings.smtp_host) as smtp:
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as smtp:
         if settings.smtp_user:
             smtp.starttls()
             smtp.login(settings.smtp_user, settings.smtp_pass)
-        smtp.sendmail(settings.smtp_user, [para], msg.as_string())
+        smtp.sendmail(remetente, [para], msg.as_string())
 
 
 async def enviar(para: str, assunto: str, html: str) -> None:

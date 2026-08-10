@@ -197,9 +197,14 @@ async def refresh(
     # Refresh tokens emitidos antes da última redefinição de senha desta
     # conta não valem mais — sem isso, uma sessão já aberta (ex: refresh
     # token roubado) continuaria funcionando mesmo depois da vítima
-    # "recuperar" a conta.
+    # "recuperar" a conta. Comparação inclusiva (`<=`) de propósito: `iat`
+    # tem granularidade de 1s (o PyJWT trunca `datetime` pro segundo
+    # inteiro), então um token emitido no MESMO segundo da invalidação não
+    # dá pra ordenar com certeza como "antes" ou "depois" — erra pro lado
+    # seguro (rejeita) em vez de arriscar deixar passar um token realmente
+    # antigo que caiu no mesmo segundo.
     invalido_apos = await auth_service.sessoes_invalidas_apos(tipo, str(sub_id))
-    if invalido_apos is not None and payload.get("iat", 0) < invalido_apos:
+    if invalido_apos is not None and payload.get("iat", 0) <= invalido_apos:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="refresh_token_invalido"
         )
@@ -230,7 +235,20 @@ async def recuperar_senha(
             f'<a href="{link}">{link}</a></p>'
             "<p>Se você não solicitou, ignore este e-mail.</p>"
         )
-        await email_service.enviar(cliente.email, "Redefinição de senha - Arena Cacerense", html)
+        try:
+            await email_service.enviar(cliente.email, "Redefinição de senha - Arena Cacerense", html)
+        except Exception:
+            # Best-effort, igual à confirmação de pagamento
+            # (services.pagamentos._notificar_confirmacao): uma falha de
+            # SMTP não pode virar 500 aqui — além de ser uma experiência
+            # ruim pro cliente tentando recuperar a conta, também vazaria
+            # (via status code 500 vs 204) se o e-mail está cadastrado ou
+            # não, quebrando a proteção que o "sempre 204" abaixo existe
+            # pra dar.
+            logger.exception(
+                "recuperar_senha: falha ao enviar e-mail de recuperação (cliente_id=%s)",
+                cliente.id,
+            )
     # Sempre 204, mesmo se o e-mail não existir, para não vazar quais
     # e-mails estão cadastrados.
     return None

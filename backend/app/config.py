@@ -15,8 +15,17 @@ class Settings(BaseSettings):
     pagarme_api_key: str = ""
     pagarme_webhook_secret: str = ""
     smtp_host: str = ""
+    smtp_port: int = 587
     smtp_user: str = ""
     smtp_pass: str = ""
+    # Endereço que aparece em "De:" — separado de `smtp_user` porque em
+    # provedores como o Resend o usuário de autenticação SMTP é uma
+    # constante do provedor ("resend"), não um e-mail; usar `smtp_user`
+    # também como remetente (como este serviço fazia antes) gerava um
+    # cabeçalho "From" inválido. Cai de volta pra `smtp_user` se não
+    # configurado, pra não quebrar um `.env` que já usava um usuário SMTP
+    # que também é um e-mail válido (ex.: Gmail/SES com usuário = e-mail).
+    smtp_from: str = ""
     frontend_url: str = "http://localhost:3000"
     tz_local: str = "America/Cuiaba"
 
