@@ -17,13 +17,16 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: [["list"]],
-  // Porta 3900 (não 3000): nesta máquina de desenvolvimento já havia outro
-  // processo (não relacionado a este projeto) ocupando localhost:3000 —
-  // confirmado via `netstat`/`tasklist`, servindo HTML de uma ferramenta
-  // completamente diferente ("OpaSuite Crisis Manager"). Rodar o `next dev`
-  // numa porta alternativa evita a colisão. Ver .git/sdd/task-15-report.md.
+  // baseURL configurável via PLAYWRIGHT_BASE_URL — o job `e2e` do CI sobe o
+  // `next dev` na porta padrão 3000, mas nesta máquina de desenvolvimento
+  // local havia outro processo (não relacionado a este projeto) ocupando
+  // localhost:3000 (confirmado via `netstat`/`tasklist`, servindo HTML de
+  // uma ferramenta completamente diferente, "OpaSuite Crisis Manager") —
+  // hardcoded como 3900 antes, o que quebrava silenciosamente no CI
+  // (ERR_CONNECTION_REFUSED, já que lá o frontend real está em 3000). Ver
+  // .git/sdd/task-15-report.md.
   use: {
-    baseURL: "http://localhost:3900",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000",
     trace: "retain-on-failure",
   },
   projects: [
