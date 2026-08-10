@@ -80,16 +80,17 @@ jobs:
         run: npm run build
 
   e2e:
-    # Task T15: job opcional/não-bloqueante — roda a stack completa (backend
-    # uvicorn + frontend next dev, sem Docker) contra Postgres/Redis efêmeros
-    # do próprio Actions e executa os specs Playwright (e2e/*.spec.ts).
-    # `continue-on-error: true` porque, no momento desta task, os specs
-    # reproduzem bugs reais da aplicação (ver .git/sdd/task-15-report.md:
-    # MissingGreenlet em `_para_out` ao criar reserva, e mismatch de
-    # contrato em `GET /reservas` staff) que impedem passar 100% verde —
-    # o job continua rodando a cada push/PR como sinal, sem travar o CI.
+    # Task T15: roda a stack completa (backend uvicorn + frontend next dev,
+    # sem Docker) contra Postgres/Redis efêmeros do próprio Actions e
+    # executa os specs Playwright (e2e/*.spec.ts). Era `continue-on-error:
+    # true` porque os specs reproduziam 2 bugs reais da aplicação
+    # (MissingGreenlet em `_para_out` ao criar reserva, e mismatch de
+    # contrato em `GET /reservas` staff — ver .git/sdd/task-15-report.md).
+    # Ambos já foram corrigidos em commits posteriores (`Reserva.recurso`
+    # agora é `lazy="joined"`; `lib/api.ts`/`AgendaAdmin`/`admin/reservas`
+    # já leem `.itens`) — confirmado rodando os specs localmente (2 passed)
+    # antes de remover a flag, então o job volta a ser bloqueante de verdade.
     runs-on: ubuntu-latest
-    continue-on-error: true
     services:
       postgres:
         image: postgres:16-alpine
