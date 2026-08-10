@@ -251,8 +251,30 @@ async def criar(db: AsyncSession, staff: Staff, dados: AssinaturaCriar) -> Assin
         pagarme_subscription_id=sub.subscription_id,
         proxima_cobranca=proxima_ocorrencia_inicio,
     )
-    db.add(assinatura)
-    await db.flush()
+    try:
+        db.add(assinatura)
+        await db.flush()
+    except Exception:
+        # Achado na revisão final de branch: a subscription já existe (e já
+        # cobra) na Pagar.me neste ponto — se o commit local falhar (ex:
+        # conexão cai, corrida rara passando pelas checagens de conflito
+        # acima), ficaria uma cobrança recorrente real sem NENHUM registro
+        # local, sem forma de encontrar/cancelar depois. Compensa cancelando
+        # a subscription antes de propagar o erro original.
+        logger.error(
+            "criar assinatura: commit local falhou após criar subscription_id=%s na "
+            "Pagar.me — compensando com cancelamento",
+            sub.subscription_id,
+        )
+        try:
+            await pagarme.cancelar_subscription(sub.subscription_id)
+        except Exception:
+            logger.exception(
+                "criar assinatura: falha ao compensar (cancelar) subscription_id=%s "
+                "— requer cancelamento manual no painel da Pagar.me",
+                sub.subscription_id,
+            )
+        raise
     # `cliente`/`recurso` já estão na identity map desta sessão (buscados
     # acima via `db.get`), então acessar `assinatura.cliente`/`.recurso` daqui
     # em diante resolve pelo cache local sem emitir lazy-load assíncrono.
@@ -391,14 +413,44 @@ async def processar_evento_sub(db: AsyncSession, evento: dict) -> None:
 
 
 async def pausar(db: AsyncSession, assinatura_id: int) -> Assinatura:
+    """Pausa a assinatura — e a cobrança de verdade junto.
+
+    Achado na revisão final de branch: antes, `pausar` só trocava o status
+    local; a subscription continuava ativa na Pagar.me e o cliente seguia
+    sendo cobrado todo mês enquanto o slot já não era mais materializado.
+    Como a Pagar.me v5 não expõe um endpoint de "pausar" (só criar/cancelar
+    subscription — a mesma interface combinada que `PagarmeClient` já
+    define), pausar aqui *cancela* a subscription real; `reativar` cria uma
+    nova quando o cliente quiser voltar."""
     assinatura = await _buscar_ou_404(db, assinatura_id)
+    if assinatura.pagarme_subscription_id:
+        pagarme = get_pagarme()
+        await pagarme.cancelar_subscription(assinatura.pagarme_subscription_id)
+        assinatura.pagarme_subscription_id = None
     assinatura.status = AssinaturaStatus.pausada
     await db.flush()
     return assinatura
 
 
 async def reativar(db: AsyncSession, assinatura_id: int) -> Assinatura:
+    """Reativa uma assinatura pausada, criando uma subscription nova na
+    Pagar.me (a antiga foi cancelada de verdade em `pausar` — ver docstring
+    lá). Simplificação própria, não coberta pelo brief original: como não
+    guardamos `card_token` (token de uso único, não reutilizável depois do
+    checkout original) nem qual `metodo` o cliente escolheu na criação, a
+    subscription recriada aqui sempre usa `pix` — o único método que não
+    depende de token salvo. Se o cliente pagava no cartão, a próxima
+    cobrança passa a ser por PIX; não há hoje uma forma de reativar
+    mantendo cartão sem coletar um novo token."""
     assinatura = await _buscar_ou_404(db, assinatura_id)
+
+    cliente = await db.get(Cliente, assinatura.cliente_id)
+    dia_cobranca = datetime.now(timezone.utc).day
+    pagarme = get_pagarme()
+    sub = await pagarme.criar_subscription(
+        cliente, assinatura.valor_mensal_centavos, dia_cobranca, "pix"
+    )
+    assinatura.pagarme_subscription_id = sub.subscription_id
     assinatura.status = AssinaturaStatus.ativa
     await db.flush()
     return assinatura

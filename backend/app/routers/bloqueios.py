@@ -16,6 +16,7 @@ from app.deps import get_db, get_staff_atual
 from app.models.entities import Bloqueio, Reserva, Staff
 from app.models.enums import ReservaStatus
 from app.schemas.recursos import BloqueioIn, BloqueioOut
+from app.services import auditoria
 
 router = APIRouter()
 
@@ -79,6 +80,19 @@ async def criar_bloqueio(
     )
     db.add(bloqueio)
     await db.flush()
+    await auditoria.registrar(
+        db,
+        staff_id=staff.id,
+        acao="criar",
+        entidade="bloqueio",
+        entidade_id=bloqueio.id,
+        dados={
+            "recurso_id": bloqueio.recurso_id,
+            "inicio": bloqueio.inicio.isoformat(),
+            "fim": bloqueio.fim.isoformat(),
+            "motivo": bloqueio.motivo,
+        },
+    )
     return bloqueio
 
 
@@ -87,7 +101,7 @@ async def atualizar_bloqueio(
     bloqueio_id: int,
     dados: BloqueioIn,
     db: AsyncSession = Depends(get_db),
-    _staff: Staff = Depends(get_staff_atual),
+    staff: Staff = Depends(get_staff_atual),
 ) -> Bloqueio:
     bloqueio = await db.get(Bloqueio, bloqueio_id)
     if bloqueio is None:
@@ -105,6 +119,19 @@ async def atualizar_bloqueio(
     bloqueio.fim = dados.fim
     bloqueio.motivo = dados.motivo
     await db.flush()
+    await auditoria.registrar(
+        db,
+        staff_id=staff.id,
+        acao="atualizar",
+        entidade="bloqueio",
+        entidade_id=bloqueio.id,
+        dados={
+            "recurso_id": bloqueio.recurso_id,
+            "inicio": bloqueio.inicio.isoformat(),
+            "fim": bloqueio.fim.isoformat(),
+            "motivo": bloqueio.motivo,
+        },
+    )
     return bloqueio
 
 
@@ -112,10 +139,19 @@ async def atualizar_bloqueio(
 async def remover_bloqueio(
     bloqueio_id: int,
     db: AsyncSession = Depends(get_db),
-    _staff: Staff = Depends(get_staff_atual),
+    staff: Staff = Depends(get_staff_atual),
 ) -> None:
     bloqueio = await db.get(Bloqueio, bloqueio_id)
     if bloqueio is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="bloqueio_nao_encontrado")
+    bloqueio_id_removido, recurso_id = bloqueio.id, bloqueio.recurso_id
     await db.delete(bloqueio)
     await db.flush()
+    await auditoria.registrar(
+        db,
+        staff_id=staff.id,
+        acao="remover",
+        entidade="bloqueio",
+        entidade_id=bloqueio_id_removido,
+        dados={"recurso_id": recurso_id},
+    )

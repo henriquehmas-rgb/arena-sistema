@@ -21,7 +21,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from app.models.entities import Cliente, Recurso, Reserva, Staff
+from app.models.entities import Auditoria, Cliente, Recurso, Reserva, Staff
 from app.models.enums import (
     AssinaturaStatus,
     PapelStaff,
@@ -143,6 +143,28 @@ async def test_criar_assinatura_gera_subscription_no_client_simulado(db, fake_pa
     assert assinatura.status == AssinaturaStatus.ativa
     assert assinatura.pagarme_subscription_id in fake_pagarme.subscriptions_criadas
     assert len(fake_pagarme.subscriptions_criadas) == 1
+
+
+# Achado na revisão final de branch: a subscription já existe (e já cobra)
+# na Pagar.me antes do commit local — se o commit falhar, ficaria uma
+# cobrança recorrente real sem nenhum registro local pra encontrá-la depois.
+async def test_criar_falha_apos_subscription_compensa_com_cancelamento(
+    db, fake_pagarme, monkeypatch
+):
+    recurso = await _recurso(db)
+    cliente = await _cliente(db)
+    staff = await _staff(db)
+
+    async def _flush_com_falha():
+        raise RuntimeError("falha simulada de commit local")
+
+    monkeypatch.setattr(db, "flush", _flush_com_falha)
+
+    with pytest.raises(RuntimeError, match="falha simulada"):
+        await assinaturas_service.criar(db, staff, _dados(recurso.id, cliente.id))
+
+    assert len(fake_pagarme.subscriptions_criadas) == 1
+    assert fake_pagarme.subscriptions_criadas[0] in fake_pagarme.subscriptions_canceladas
 
 
 async def test_criar_conflito_com_outra_assinatura_ativa_409(db, fake_pagarme):
@@ -320,9 +342,15 @@ async def test_pausar_e_reativar(db, fake_pagarme):
     cliente = await _cliente(db)
     staff = await _staff(db)
     assinatura = await assinaturas_service.criar(db, staff, _dados(recurso.id, cliente.id))
+    sub_original = assinatura.pagarme_subscription_id
 
     pausada = await assinaturas_service.pausar(db, assinatura.id)
     assert pausada.status == AssinaturaStatus.pausada
+    # Achado na revisão final de branch: pausar só trocava o status local —
+    # a cobrança real continuava rodando. Agora cancela a subscription de
+    # verdade na Pagar.me e limpa o id local.
+    assert sub_original in fake_pagarme.subscriptions_canceladas
+    assert pausada.pagarme_subscription_id is None
 
     # Assinatura pausada não é materializada (só `ativa` conta).
     criadas = await assinaturas_service.materializar(db, semanas=5)
@@ -330,6 +358,56 @@ async def test_pausar_e_reativar(db, fake_pagarme):
 
     reativada = await assinaturas_service.reativar(db, assinatura.id)
     assert reativada.status == AssinaturaStatus.ativa
+    # Reativar cria uma subscription NOVA (a antiga foi cancelada de
+    # verdade, não só "escondida" localmente) — nunca reaproveita o id
+    # antigo nem fica sem nenhuma subscription associada.
+    assert reativada.pagarme_subscription_id is not None
+    assert reativada.pagarme_subscription_id != sub_original
+    assert len(fake_pagarme.subscriptions_criadas) == 2
 
     criadas_depois = await assinaturas_service.materializar(db, semanas=5)
     assert criadas_depois == 5
+
+
+# Achado na revisão final de branch: nenhuma rota de /assinaturas
+# registrava auditoria — criar/pausar/reativar/cancelar devem gerar um
+# registro cada, via HTTP (não chamando o service direto), pra cobrir o
+# router de ponta a ponta.
+async def test_rotas_assinaturas_registram_auditoria(
+    client, db, staff_admin_logado, fake_pagarme
+):
+    recurso = await _recurso(db, nome="Campo Auditoria Assinatura")
+    cliente = await _cliente(db, "auditoria")
+    headers = staff_admin_logado["headers"]
+
+    resp = await client.post(
+        "/api/v1/assinaturas",
+        json={
+            "cliente_id": cliente.id,
+            "recurso_id": recurso.id,
+            "dia_semana": 0,
+            "hora_inicio": 19,
+            "hora_fim": 20,
+            "valor_mensal_centavos": 15000,
+            "metodo": "pix",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    assinatura_id = resp.json()["id"]
+
+    for acao in ("pausar", "reativar", "cancelar"):
+        resp = await client.post(
+            f"/api/v1/assinaturas/{assinatura_id}/{acao}", headers=headers
+        )
+        assert resp.status_code == 200, resp.text
+
+    registros = (
+        await db.execute(
+            select(Auditoria)
+            .where(Auditoria.entidade == "assinatura", Auditoria.entidade_id == assinatura_id)
+            .order_by(Auditoria.id)
+        )
+    ).scalars().all()
+    assert [r.acao for r in registros] == ["criar", "pausar", "reativar", "cancelar"]
+    assert all(r.staff_id == staff_admin_logado["staff"].id for r in registros)

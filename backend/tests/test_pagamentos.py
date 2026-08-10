@@ -193,6 +193,41 @@ async def test_http_client_criar_subscription_mapeia_status_active_para_ativa():
     assert resultado.status == "ativa"
 
 
+# Achado na revisão final de branch: `pix_qr_code`/`pix_copia_cola` usavam
+# os dois o mesmo campo (`qr_code`, a string EMV "copia-e-cola") — o
+# frontend renderiza `pix_qr_code` num <img src=...>, então a imagem do QR
+# vinha quebrada assim que `PAGARME_MODE` saísse de `simulado` (que nunca
+# bateu na Pagar.me de verdade pra expor esse bug). A imagem real vem em
+# `qr_code_url`.
+async def test_http_client_criar_order_pix_separa_qr_code_url_de_copia_cola():
+    def _handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/orders")
+        return httpx.Response(
+            200,
+            json={
+                "id": "or_abc123",
+                "status": "pending",
+                "charges": [
+                    {
+                        "id": "ch_abc123",
+                        "last_transaction": {
+                            "qr_code": "00020126580014BR.GOV.BCB.PIX...COPIA_COLA",
+                            "qr_code_url": "https://api.pagar.me/qr/or_abc123.png",
+                        },
+                    }
+                ],
+            },
+        )
+
+    cliente = HttpClient(api_key="sk_test_fake")
+    cliente._request = _fake_request_factory(_handler)  # type: ignore[method-assign]
+
+    resultado = await cliente.criar_order_pix(CLIENTE_TESTE, valor_centavos=15000, descricao="Reserva")
+
+    assert resultado.pix_qr_code == "https://api.pagar.me/qr/or_abc123.png"
+    assert resultado.pix_copia_cola == "00020126580014BR.GOV.BCB.PIX...COPIA_COLA"
+
+
 def _fake_request_factory(handler):
     """Substitui `HttpClient._request` por uma versão que usa
     `httpx.MockTransport` em vez de bater na rede real — não há chave de API

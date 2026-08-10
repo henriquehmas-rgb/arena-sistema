@@ -7,9 +7,14 @@
 #   base); publicar 8000/3000 no host é redundante em produção e colide com
 #   portas já usadas por outros projetos nesta VPS.
 #
-# O Docker Compose já mescla automaticamente `docker-compose.yml` +
-# `docker-compose.override.yml` do mesmo diretório ao rodar `docker compose
-# up` sem `-f` explícito — não precisa passar este arquivo manualmente.
+# Achado na revisão final de branch: este arquivo já se chamou
+# `docker-compose.override.yml` — nome que o Docker Compose mescla
+# AUTOMATICAMENTE com `docker-compose.yml` em qualquer `docker compose up`
+# rodado neste diretório, inclusive em desenvolvimento local (não só na
+# VPS), removendo sem querer o atalho de portas publicadas que todo mundo
+# usa pra rodar localmente sem Docker Desktop exposto. Renomeado pra
+# `docker-compose.prod.yml`, que NÃO é aplicado automaticamente — a VPS
+# passa `-f` explícito (ver `DEPLOY.md`).
 services:
   postgres:
     ports: !reset []

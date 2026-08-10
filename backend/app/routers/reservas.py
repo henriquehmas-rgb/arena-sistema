@@ -34,7 +34,7 @@ from app.schemas.reservas import (
     ReservaOut,
     StatusOut,
 )
-from app.services import reservas as reservas_service
+from app.services import auditoria, reservas as reservas_service
 from app.services.precos import PrecoNaoConfigurado
 
 router = APIRouter()
@@ -184,6 +184,18 @@ async def criar_reserva_balcao(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="preco_nao_configurado",
         ) from None
+    await auditoria.registrar(
+        db,
+        staff_id=staff.id,
+        acao="criar_balcao",
+        entidade="reserva",
+        entidade_id=reserva.id,
+        dados={
+            "recurso_id": reserva.recurso_id,
+            "valor_centavos": reserva.valor_centavos,
+            "metodo": dados.metodo.value,
+        },
+    )
     return _para_out(reserva)
 
 
@@ -196,5 +208,13 @@ async def cancelar_reserva_admin(
 ) -> StatusOut:
     reserva = await reservas_service.cancelar_admin(
         db, staff, reserva_id, dados.estornar
+    )
+    await auditoria.registrar(
+        db,
+        staff_id=staff.id,
+        acao="cancelar",
+        entidade="reserva",
+        entidade_id=reserva.id,
+        dados={"estornar": dados.estornar},
     )
     return StatusOut(status=reserva.status)

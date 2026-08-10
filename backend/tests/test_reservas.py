@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import select
 
 from app.config import settings
-from app.models.entities import Cliente, FaixaPreco, Pagamento, Recurso, Reserva
+from app.models.entities import Auditoria, Cliente, FaixaPreco, Pagamento, Recurso, Reserva
 from app.models.enums import (
     MetodoPagamento,
     PagamentoStatus,
@@ -273,6 +273,18 @@ async def test_rota_balcao(client, db, staff_admin_logado):
     assert resp.status_code == 201, resp.text
     assert resp.json()["status"] == "confirmada"
 
+    # Achado na revisão final de branch: reserva de balcão não registrava
+    # auditoria (uma reserva paga criada no ato, sem trilha nenhuma).
+    registro = (
+        await db.execute(
+            select(Auditoria).where(
+                Auditoria.entidade == "reserva", Auditoria.entidade_id == resp.json()["id"]
+            )
+        )
+    ).scalar_one()
+    assert registro.acao == "criar_balcao"
+    assert registro.staff_id == staff_admin_logado["staff"].id
+
 
 # --- cancelamento cliente: dentro/fora da janela -----------------------------
 
@@ -394,6 +406,16 @@ async def test_rota_cancelar_admin(client, db, staff_admin_logado):
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "cancelada"
+
+    registro = (
+        await db.execute(
+            select(Auditoria).where(
+                Auditoria.entidade == "reserva", Auditoria.entidade_id == reserva.id
+            )
+        )
+    ).scalar_one()
+    assert registro.acao == "cancelar"
+    assert registro.staff_id == staff_admin_logado["staff"].id
 
 
 # --- GET /reservas (staff), paginada -----------------------------------------

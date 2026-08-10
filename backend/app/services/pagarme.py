@@ -342,7 +342,11 @@ class HttpClient(PagarmeClient):
             order_id=data.get("id", ""),
             charge_id=charge.get("id", ""),
             status=_STATUS_PAGARME_PARA_INTERNO.get(data.get("status", ""), "pendente"),
-            pix_qr_code=transacao.get("qr_code"),
+            # `qr_code` é a string EMV "copia-e-cola"; a imagem do QR (o que
+            # o frontend renderiza num <img src=...>) vem em `qr_code_url` —
+            # usar `qr_code` nos dois campos rendia um <img> quebrado assim
+            # que `PAGARME_MODE` saísse de `simulado`.
+            pix_qr_code=transacao.get("qr_code_url"),
             pix_copia_cola=transacao.get("qr_code"),
         )
 

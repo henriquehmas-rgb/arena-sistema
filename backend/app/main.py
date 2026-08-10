@@ -21,9 +21,28 @@ from app.routers import (
 )
 from app.services import jobs
 
+JWT_SECRET_PADRAO_INSEGURO = "dev-inseguro-trocar"
+
+
+def _verificar_jwt_secret_producao() -> None:
+    """Recusa subir se `PAGARME_MODE` saiu de `simulado` (ou seja, dinheiro
+    de verdade está em jogo) e `JWT_SECRET` ainda é o valor padrão inseguro
+    — esse default está no repositório público (`config.py`), então um
+    deploy que esqueça de gerar um segredo real aceitaria tokens forjados
+    para qualquer cliente/staff sem nenhum erro visível até alguém explorar
+    isso."""
+    if settings.pagarme_mode != "simulado" and settings.jwt_secret == JWT_SECRET_PADRAO_INSEGURO:
+        raise RuntimeError(
+            "JWT_SECRET está com o valor padrão inseguro (dev-inseguro-trocar) "
+            f"e PAGARME_MODE={settings.pagarme_mode!r} — gere um segredo real "
+            "(ex.: `openssl rand -hex 32`) e configure JWT_SECRET antes de subir "
+            "fora do modo simulado."
+        )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _verificar_jwt_secret_producao()
     jobs.iniciar(app)
     yield
 

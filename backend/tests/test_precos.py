@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import select
 
 from app.config import settings
-from app.models.entities import FaixaPreco, Recurso
+from app.models.entities import Auditoria, FaixaPreco, Recurso
 from app.models.enums import TipoRecurso
 from app.services.precos import PrecoNaoConfigurado, preco_para
 
@@ -158,6 +158,19 @@ async def test_crud_precos_admin(client, db, staff_admin_logado):
 
     resultado = await db.execute(select(FaixaPreco).where(FaixaPreco.id == faixa_id))
     assert resultado.scalar_one_or_none() is None
+
+    # Achado na revisão final de branch: o CRUD de preços não registrava
+    # nada em auditoria — as 3 ações (criar/atualizar/remover) devem gerar
+    # um registro cada, todas atribuídas ao admin autenticado.
+    registros = (
+        await db.execute(
+            select(Auditoria)
+            .where(Auditoria.entidade == "faixa_preco", Auditoria.entidade_id == faixa_id)
+            .order_by(Auditoria.id)
+        )
+    ).scalars().all()
+    assert [r.acao for r in registros] == ["criar", "atualizar", "remover"]
+    assert all(r.staff_id == staff_admin_logado["staff"].id for r in registros)
 
 
 async def test_precos_exige_autenticacao(client):

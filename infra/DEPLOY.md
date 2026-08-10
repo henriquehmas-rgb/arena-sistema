@@ -32,20 +32,27 @@ cp .env.example .env
 # NEXT_PUBLIC_API_URL=https://api.arenacacerense.com.br/api/v1,
 # PAGARME_MODE=simulado (até cadastrar as chaves reais)
 
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 docker exec arena-api alembic upgrade head
 docker exec -e SEED_ADMIN_SENHA="$(openssl rand -hex 12)" arena-api python -m app.seed
 # ↑ anote a senha impressa/gerada — é a senha do usuário admin@arenacacerense.com.br
 ```
 
-### `docker-compose.override.yml`
+### `docker-compose.prod.yml`
 
-Existe um override (`infra/docker-compose.override.yml`, versionado) que remove a
-publicação de portas no host (`5432`, `6379`, `8000`, `3000`) do compose base — essas
+Existe um override de produção (`infra/docker-compose.prod.yml`, versionado) que remove
+a publicação de portas no host (`5432`, `6379`, `8000`, `3000`) do compose base — essas
 portas são só um atalho de desenvolvimento local e colidem com outros projetos na VPS
-compartilhada. O `docker compose up` já aplica os dois arquivos automaticamente (merge
-padrão do Compose); não precisa passar `-f` manualmente. Postgres/Redis só ficam
-acessíveis pela rede interna `app` do compose; api/web só pelo Traefik.
+compartilhada. Postgres/Redis só ficam acessíveis pela rede interna `app` do compose;
+api/web só pelo Traefik.
+
+**Sempre passar `-f docker-compose.yml -f docker-compose.prod.yml` explicitamente na
+VPS** (todo comando `docker compose` abaixo já faz isso). Achado na revisão final de
+branch: este arquivo já se chamou `docker-compose.override.yml` — nome que o Compose
+mescla automaticamente em qualquer `docker compose up`, inclusive em desenvolvimento
+local, removendo sem querer o atalho de portas publicadas que todo mundo usa pra rodar
+localmente sem Docker Desktop exposto. Renomeado justamente para não ser aplicado por
+acidente fora da VPS.
 
 ### DNS (Hostinger, zona `arenacacerense.com.br`)
 
@@ -68,7 +75,7 @@ detectar a versão do backend, quebrando todo hash de senha com
 ## Deploy de uma atualização
 
 ```bash
-ssh vps "cd /docker/arena-sistema && git pull && cd infra && docker compose up -d --build"
+ssh vps "cd /docker/arena-sistema && git pull && cd infra && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build"
 # se houve migração nova:
 ssh vps "docker exec arena-api alembic upgrade head"
 ```
