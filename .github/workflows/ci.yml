@@ -166,6 +166,12 @@ jobs:
         run: |
           npx --yes wait-on http://localhost:8000/api/v1/health http://localhost:3000 --timeout 60000
 
+      - name: Dump backend/frontend logs (diagnóstico)
+        if: failure()
+        run: |
+          echo "--- backend.log ---"; cat /tmp/backend.log || true
+          echo "--- frontend.log ---"; cat /tmp/frontend.log || true
+
       - name: Run Playwright E2E
         working-directory: frontend
         run: npx playwright test
