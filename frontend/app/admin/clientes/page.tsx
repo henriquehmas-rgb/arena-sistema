@@ -78,12 +78,19 @@ export default function AdminClientesPage() {
       setErroNovo("Informe o nome.");
       return;
     }
+    if (!novoCelular.trim() || !novoEmail.trim()) {
+      // Backend exige os dois (Cliente.email/celular são NOT NULL, email é
+      // UNIQUE) — validação espelhada aqui pra dar um erro claro em vez de
+      // deixar estourar 422 direto da API.
+      setErroNovo("Informe celular e e-mail.");
+      return;
+    }
     setSalvandoNovo(true);
     try {
       const criado = (await api.clientes.criar({
         nome: novoNome.trim(),
-        celular: novoCelular.trim() || undefined,
-        email: novoEmail.trim() || undefined,
+        celular: novoCelular.trim(),
+        email: novoEmail.trim(),
       })) as Cliente;
       setMostrarNovo(false);
       setNovoNome("");
@@ -113,8 +120,8 @@ export default function AdminClientesPage() {
           <form onSubmit={criarClienteBalcao}>
             <Campo label="Nome" value={novoNome} onChange={(e) => setNovoNome(e.target.value)} required />
             <div style={{ display: "flex", gap: 12 }}>
-              <Campo label="Celular" value={novoCelular} onChange={(e) => setNovoCelular(e.target.value)} />
-              <Campo label="E-mail (opcional)" type="email" value={novoEmail} onChange={(e) => setNovoEmail(e.target.value)} />
+              <Campo label="Celular" value={novoCelular} onChange={(e) => setNovoCelular(e.target.value)} required />
+              <Campo label="E-mail" type="email" value={novoEmail} onChange={(e) => setNovoEmail(e.target.value)} required />
             </div>
             <Botao type="submit" disabled={salvandoNovo}>
               {salvandoNovo ? "Salvando..." : "Salvar cliente"}
