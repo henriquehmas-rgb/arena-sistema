@@ -163,8 +163,14 @@ jobs:
         run: nohup npm run dev > /tmp/frontend.log 2>&1 &
 
       - name: Wait for backend + frontend
+        # `http-get://` (não `http://`) é de propósito: por padrão o wait-on
+        # manda HEAD, e `GET /api/v1/health` não implementa HEAD — respondia
+        # 405 pra sempre, então o wait-on nunca via um 2xx e estourava o
+        # timeout mesmo com o backend já de pé e saudável (confirmado via
+        # /tmp/backend.log num run de diagnóstico: "Application startup
+        # complete" seguido só de 405s).
         run: |
-          npx --yes wait-on http://localhost:8000/api/v1/health http://localhost:3000 --timeout 60000
+          npx --yes wait-on http-get://localhost:8000/api/v1/health http://localhost:3000 --timeout 60000
 
       - name: Dump backend/frontend logs (diagnóstico)
         if: failure()
