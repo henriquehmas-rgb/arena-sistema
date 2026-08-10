@@ -244,6 +244,14 @@ async def criar(db: AsyncSession, staff: Staff, dados: AssinaturaCriar) -> Assin
     assinatura = Assinatura(
         cliente_id=dados.cliente_id,
         recurso_id=dados.recurso_id,
+        # Atribuir os objetos (não só os `_id`) preenche a relationship em
+        # memória — `cliente`/`recurso` já estão carregados (buscados acima
+        # via `db.get`), então isso evita um lazy-load síncrono depois (ver
+        # comentário mais abaixo, no ponto onde essa suposição errada
+        # causava `MissingGreenlet` ao acessar `assinatura.cliente`/
+        # `.recurso` logo após o flush).
+        cliente=cliente,
+        recurso=recurso,
         dia_semana=dados.dia_semana,
         hora_inicio=dados.hora_inicio,
         hora_fim=dados.hora_fim,
@@ -276,9 +284,6 @@ async def criar(db: AsyncSession, staff: Staff, dados: AssinaturaCriar) -> Assin
                 sub.subscription_id,
             )
         raise
-    # `cliente`/`recurso` já estão na identity map desta sessão (buscados
-    # acima via `db.get`), então acessar `assinatura.cliente`/`.recurso` daqui
-    # em diante resolve pelo cache local sem emitir lazy-load assíncrono.
     return assinatura
 
 

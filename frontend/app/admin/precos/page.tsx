@@ -21,8 +21,8 @@ type Preco = {
   id: number;
   recurso_id: number;
   dias_semana: number[];
-  hora_inicio: string;
-  hora_fim: string;
+  hora_inicio: number;
+  hora_fim: number;
   preco_centavos: number;
 };
 
@@ -46,6 +46,17 @@ function reaisParaCentavos(valorStr: string): number {
 
 function centavosParaReais(c: number): string {
   return (c / 100).toFixed(2).replace(".", ",");
+}
+
+// O backend guarda hora_inicio/hora_fim como INT (hora cheia, 0-23) — só o
+// <input type="time"> da UI trabalha com string "HH:MM". Sem essa conversão
+// nos dois sentidos, toda criação/edição de regra de preço quebrava com 422
+// (int_parsing: "unable to parse string '08:00' as an integer").
+function horaParaInt(horaStr: string): number {
+  return parseInt(horaStr.split(":")[0] || "0", 10);
+}
+function intParaHora(h: number): string {
+  return `${String(h).padStart(2, "0")}:00`;
 }
 
 const chipStyle = (ativo: boolean): CSSProperties => ({
@@ -77,15 +88,15 @@ function FormularioPreco({
   salvando,
 }: {
   inicial?: Preco;
-  onSalvar: (dados: { dias_semana: number[]; hora_inicio: string; hora_fim: string; preco_centavos: number }) => void;
+  onSalvar: (dados: { dias_semana: number[]; hora_inicio: number; hora_fim: number; preco_centavos: number }) => void;
   onCancelar?: () => void;
   salvando: boolean;
 }) {
   const [dias, setDias] = useState<number[]>(
     inicial ? inicial.dias_semana.map(diaBackendParaJs) : []
   );
-  const [horaInicio, setHoraInicio] = useState(inicial?.hora_inicio ?? "08:00");
-  const [horaFim, setHoraFim] = useState(inicial?.hora_fim ?? "09:00");
+  const [horaInicio, setHoraInicio] = useState(intParaHora(inicial?.hora_inicio ?? 8));
+  const [horaFim, setHoraFim] = useState(intParaHora(inicial?.hora_fim ?? 9));
   const [valorReais, setValorReais] = useState(inicial ? centavosParaReais(inicial.preco_centavos) : "");
   const [erro, setErro] = useState<string | null>(null);
 
@@ -102,8 +113,8 @@ function FormularioPreco({
     }
     onSalvar({
       dias_semana: dias.map(diaJsParaBackend),
-      hora_inicio: horaInicio,
-      hora_fim: horaFim,
+      hora_inicio: horaParaInt(horaInicio),
+      hora_fim: horaParaInt(horaFim),
       preco_centavos: reaisParaCentavos(valorReais),
     });
   }
@@ -172,7 +183,7 @@ export default function PrecosPage() {
     }
   }
 
-  async function criar(recursoId: number, dados: { dias_semana: number[]; hora_inicio: string; hora_fim: string; preco_centavos: number }) {
+  async function criar(recursoId: number, dados: { dias_semana: number[]; hora_inicio: number; hora_fim: number; preco_centavos: number }) {
     setSalvando(true);
     setErro(null);
     try {
@@ -186,7 +197,7 @@ export default function PrecosPage() {
     }
   }
 
-  async function atualizar(id: number, dados: { dias_semana: number[]; hora_inicio: string; hora_fim: string; preco_centavos: number }) {
+  async function atualizar(id: number, dados: { dias_semana: number[]; hora_inicio: number; hora_fim: number; preco_centavos: number }) {
     setSalvando(true);
     setErro(null);
     try {
@@ -260,7 +271,7 @@ export default function PrecosPage() {
                             .join(", ")}
                         </td>
                         <td style={tdStyle}>
-                          {p.hora_inicio} – {p.hora_fim}
+                          {intParaHora(p.hora_inicio)} – {intParaHora(p.hora_fim)}
                         </td>
                         <td style={tdStyle}>{centavos(p.preco_centavos)}</td>
                         <td style={tdStyle}>

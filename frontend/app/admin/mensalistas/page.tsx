@@ -22,15 +22,12 @@ type Cliente = { id: number; nome: string; email?: string; celular?: string };
 
 type Assinatura = {
   id: number;
-  cliente_id?: number;
-  cliente?: string | { id: number; nome: string };
-  recurso_id?: number;
-  recurso?: string | { id: number; nome: string };
+  cliente_nome: string;
+  recurso_nome: string;
   dia_semana: number;
-  hora_inicio: string;
-  hora_fim?: string;
-  valor_centavos?: number;
-  metodo?: string;
+  hora_inicio: number;
+  hora_fim: number;
+  valor_mensal_centavos: number;
   status: string;
 };
 
@@ -51,9 +48,14 @@ const METODOS = [
   { valor: "dinheiro", label: "Dinheiro" },
 ];
 
-function nomeDe(v?: string | { id: number; nome: string }): string {
-  if (!v) return "—";
-  return typeof v === "string" ? v : v.nome;
+// O backend guarda hora_inicio/hora_fim como INT (hora cheia, 0-23) — só o
+// <input type="time"> da UI trabalha com string "HH:MM". Sem essa conversão
+// a criação de mensalista quebrava com 422 (int_parsing).
+function horaParaInt(horaStr: string): number {
+  return parseInt(horaStr.split(":")[0] || "0", 10);
+}
+function intParaHora(h: number): string {
+  return `${String(h).padStart(2, "0")}:00`;
 }
 
 function reaisParaCentavos(valorStr: string): number {
@@ -90,6 +92,7 @@ export default function MensalistasPage() {
   const [recursoId, setRecursoId] = useState<number | "">("");
   const [diaSemana, setDiaSemana] = useState<number>(1);
   const [horaInicio, setHoraInicio] = useState("08:00");
+  const [horaFim, setHoraFim] = useState("09:00");
   const [valorReais, setValorReais] = useState("");
   const [metodo, setMetodo] = useState("pix");
 
@@ -150,6 +153,7 @@ export default function MensalistasPage() {
     setRecursoId("");
     setDiaSemana(1);
     setHoraInicio("08:00");
+    setHoraFim("09:00");
     setValorReais("");
     setMetodo("pix");
   }
@@ -171,8 +175,9 @@ export default function MensalistasPage() {
         cliente_id: clienteSelecionado.id,
         recurso_id: recursoId,
         dia_semana: diaJsParaBackend(diaSemana),
-        hora_inicio: horaInicio,
-        valor_centavos: reaisParaCentavos(valorReais),
+        hora_inicio: horaParaInt(horaInicio),
+        hora_fim: horaParaInt(horaFim),
+        valor_mensal_centavos: reaisParaCentavos(valorReais),
         metodo,
       });
       limparForm();
@@ -279,13 +284,22 @@ export default function MensalistasPage() {
               </div>
             </div>
 
-            <Campo
-              label="Hora de início"
-              type="time"
-              value={horaInicio}
-              onChange={(e) => setHoraInicio(e.target.value)}
-              required
-            />
+            <div style={{ display: "flex", gap: 12 }}>
+              <Campo
+                label="Hora de início"
+                type="time"
+                value={horaInicio}
+                onChange={(e) => setHoraInicio(e.target.value)}
+                required
+              />
+              <Campo
+                label="Hora de fim"
+                type="time"
+                value={horaFim}
+                onChange={(e) => setHoraFim(e.target.value)}
+                required
+              />
+            </div>
             <Campo
               label="Valor mensal (R$)"
               value={valorReais}
@@ -337,12 +351,12 @@ export default function MensalistasPage() {
                   <td style={tdStyle}>
                     <Badge status={a.status} />
                   </td>
-                  <td style={tdStyle}>{nomeDe(a.cliente)}</td>
-                  <td style={tdStyle}>{nomeDe(a.recurso)}</td>
+                  <td style={tdStyle}>{a.cliente_nome}</td>
+                  <td style={tdStyle}>{a.recurso_nome}</td>
                   <td style={tdStyle}>
-                    {DIAS_LABEL[diaBackendParaJs(a.dia_semana)] ?? a.dia_semana} — {a.hora_inicio}
+                    {DIAS_LABEL[diaBackendParaJs(a.dia_semana)] ?? a.dia_semana} — {intParaHora(a.hora_inicio)} às {intParaHora(a.hora_fim)}
                   </td>
-                  <td style={tdStyle}>{a.valor_centavos != null ? centavos(a.valor_centavos) : "—"}</td>
+                  <td style={tdStyle}>{centavos(a.valor_mensal_centavos)}</td>
                   <td style={tdStyle}>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       {a.status !== "pausada" && a.status !== "cancelada" && (
