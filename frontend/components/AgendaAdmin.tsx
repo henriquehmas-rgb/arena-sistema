@@ -25,7 +25,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Recurso, type Reserva, type Slot } from "@/lib/api";
 import { Botao, BotaoSecundario, Campo, Card, Titulo, Aviso, Badge } from "@/components/ui";
-import { centavos, horaLocal, paraDataISO } from "@/lib/format";
+import { centavos, horaLocal, localParaUTC, paraDataISO } from "@/lib/format";
 import ModalBalcao from "./ModalBalcao";
 
 type Bloqueio = { id: number; recurso_id: number; inicio: string; fim: string; motivo: string };
@@ -420,8 +420,13 @@ function ModalBloqueio({
     try {
       await api.bloqueios.criar({
         recurso_id: recursoId,
-        inicio: `${data}T${horaInicio}:00`,
-        fim: `${data}T${horaFim}:00`,
+        // `data`/`horaInicio`/`horaFim` são horário LOCAL da arena (o que o
+        // staff vê e digita) — precisa converter pra UTC antes de mandar,
+        // senão o backend guarda como se já fosse UTC e o bloqueio salva
+        // deslocado do horário de fato pretendido (ver histórico no
+        // workflow de CI, job `e2e`, achado pelo admin.spec.ts).
+        inicio: localParaUTC(data, horaInicio),
+        fim: localParaUTC(data, horaFim),
         motivo: motivo.trim(),
       });
       onCriado();

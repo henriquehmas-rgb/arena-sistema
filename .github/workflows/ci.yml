@@ -84,34 +84,34 @@ jobs:
     # sem Docker) contra Postgres/Redis efêmeros do próprio Actions e
     # executa os specs Playwright (e2e/*.spec.ts).
     #
-    # Histórico do continue-on-error: true nesta job:
+    # Histórico do continue-on-error: true nesta job (removido — todos os
+    # bugs abaixo já foram corrigidos e confirmados com os specs passando
+    # no CI de verdade, banco efêmero limpo):
     #   1. Bugs originais da T15 (MissingGreenlet em `_para_out`, mismatch de
-    #      contrato {itens,total} em GET /reservas) — já corrigidos em
-    #      commits posteriores, confirmado rodando os specs localmente.
-    #   2. 2 bugs de infraestrutura do próprio job (não da app) que faziam o
-    #      job nunca passar de verdade no runner do GitHub Actions, mesmo com
-    #      os specs corretos: (a) `wait-on` manda HEAD por padrão e
-    #      `GET /api/v1/health` só aceita GET -> 405 infinito -> timeout
-    #      mesmo com o backend saudável; corrigido usando o esquema
-    #      `http-get://`. (b) `playwright.config.ts` tinha `baseURL` fixo em
-    #      `localhost:3900` (workaround só de uma máquina de dev local), mas
-    #      o CI sobe o `next dev` na porta padrão 3000 -> ERR_CONNECTION_REFUSED;
-    #      corrigido lendo `PLAYWRIGHT_BASE_URL` com fallback pra 3000.
-    #   3. Com (1) e (2) corrigidos, `reserva.spec.ts` passa 100% no CI.
-    #      `admin.spec.ts` agora reproduz um bug real e novo (não visto antes
-    #      porque os bugs acima impediam o spec de rodar de verdade): o modal
-    #      "Bloquear horário" (`frontend/components/AgendaAdmin.tsx`, função
-    #      `ModalBloqueio`, por volta da linha 423) monta `inicio`/`fim` como
-    #      `${data}T${horaInicio}:00` — uma string de datetime SEM timezone.
-    #      O backend (Postgres/asyncpg, coluna timestamptz) interpreta esse
-    #      naive datetime como UTC, mas a grade da agenda (e o input "Início"
-    #      do modal) mostra horário local (`America/Cuiaba`, UTC-4) — ou
-    #      seja, um bloqueio criado às "08:00" no modal na verdade é salvo
-    #      como 08:00 UTC = 04:00 local, ~4h deslocado do horário pretendido
-    #      pelo staff. Bug de produção real, não do teste — mantendo
-    #      continue-on-error até ter uma correção + regressão dedicadas.
+    #      contrato {itens,total} em GET /reservas) — corrigidos em commits
+    #      posteriores à T15.
+    #   2. 2 bugs de infraestrutura do próprio job (não da app): (a) `wait-on`
+    #      manda HEAD por padrão e `GET /api/v1/health` só aceita GET -> 405
+    #      infinito -> timeout mesmo com o backend saudável; corrigido usando
+    #      o esquema `http-get://`. (b) `playwright.config.ts` tinha `baseURL`
+    #      fixo em `localhost:3900` (workaround só de uma máquina de dev
+    #      local), mas o CI sobe o `next dev` na porta padrão 3000 ->
+    #      ERR_CONNECTION_REFUSED; corrigido lendo `PLAYWRIGHT_BASE_URL` com
+    #      fallback pra 3000.
+    #   3. Bug real de produção capturado pelo admin.spec.ts só depois de (1)
+    #      e (2) corrigidos (antes o spec nunca chegava a rodar de verdade):
+    #      o modal "Bloquear horário" (`frontend/components/AgendaAdmin.tsx`,
+    #      `ModalBloqueio.confirmar`) montava `inicio`/`fim` como
+    #      `${data}T${horaInicio}:00` — datetime SEM timezone. O backend
+    #      guardava isso interpretado conforme o timezone da SESSÃO do
+    #      Postgres (não necessariamente America/Cuiaba, como no Postgres
+    #      efêmero do CI, que é UTC por padrão) — um bloqueio criado às
+    #      "08:00" no modal podia salvar deslocado do horário pretendido
+    #      pelo staff, dependendo de como o Postgres do ambiente estivesse
+    #      configurado. Corrigido convertendo local->UTC explicitamente no
+    #      frontend (`lib/format.ts#localParaUTC`), independente de
+    #      configuração de timezone do servidor.
     runs-on: ubuntu-latest
-    continue-on-error: true
     services:
       postgres:
         image: postgres:16-alpine
