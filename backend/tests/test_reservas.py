@@ -713,3 +713,106 @@ async def test_rota_listar_staff_inclui_pagamento_mais_recente(client, db, staff
     assert por_id[reserva_com_pagamento.id]["pagamento_status"] == "pago"
     assert por_id[reserva_sem_pagamento.id]["pagamento_metodo"] is None
     assert por_id[reserva_sem_pagamento.id]["pagamento_status"] is None
+
+
+# --- POST /reservas/{id}/notificar ------------------------------------------
+
+
+async def test_rota_notificar_envia_email(client, db, staff_admin_logado, monkeypatch):
+    recurso = await criar_recurso(db, nome="Campo T6 Notificar")
+    cliente = await criar_cliente(db, nome="Cliente Notificar")
+    inicio, fim = horario_futuro(dias=9)
+
+    reserva = Reserva(
+        recurso_id=recurso.id,
+        cliente_id=cliente.id,
+        inicio=inicio,
+        fim=fim,
+        status=ReservaStatus.confirmada,
+        origem=ReservaOrigem.online,
+        valor_centavos=PRECO_PADRAO_CENTAVOS,
+    )
+    db.add(reserva)
+    await db.flush()
+
+    capturado = {}
+
+    async def _enviar_fake(para, assunto, html):
+        capturado["para"] = para
+        capturado["assunto"] = assunto
+        capturado["html"] = html
+
+    monkeypatch.setattr("app.services.reservas.email.enviar", _enviar_fake)
+
+    resp = await client.post(
+        f"/api/v1/reservas/{reserva.id}/notificar",
+        headers=staff_admin_logado["headers"],
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"status": "enviado"}
+    assert capturado["para"] == cliente.email
+    assert "lembrete" in capturado["assunto"].lower() or "reserva" in capturado["assunto"].lower()
+
+    registro = (
+        await db.execute(
+            select(Auditoria).where(
+                Auditoria.entidade == "reserva",
+                Auditoria.entidade_id == reserva.id,
+                Auditoria.acao == "notificar",
+            )
+        )
+    ).scalar_one()
+    assert registro.staff_id == staff_admin_logado["staff"].id
+
+
+async def test_rota_notificar_reserva_avulsa_sem_email_422(client, db, staff_admin_logado):
+    recurso = await criar_recurso(db, nome="Campo T6 Notificar Avulso")
+    inicio, fim = horario_futuro(dias=10)
+
+    reserva = Reserva(
+        recurso_id=recurso.id,
+        nome_avulso="Avulso Sem Email",
+        celular_avulso="65977776666",
+        inicio=inicio,
+        fim=fim,
+        status=ReservaStatus.confirmada,
+        origem=ReservaOrigem.balcao,
+        valor_centavos=PRECO_PADRAO_CENTAVOS,
+    )
+    db.add(reserva)
+    await db.flush()
+
+    resp = await client.post(
+        f"/api/v1/reservas/{reserva.id}/notificar",
+        headers=staff_admin_logado["headers"],
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "sem_email"
+
+
+async def test_rota_notificar_reserva_inexistente_404(client, staff_admin_logado):
+    resp = await client.post(
+        "/api/v1/reservas/999999/notificar",
+        headers=staff_admin_logado["headers"],
+    )
+    assert resp.status_code == 404
+
+
+async def test_rota_notificar_exige_staff(client, db):
+    recurso = await criar_recurso(db, nome="Campo T6 Notificar Sem Auth")
+    cliente = await criar_cliente(db, nome="Cliente Sem Auth")
+    inicio, fim = horario_futuro(dias=12)
+    reserva = Reserva(
+        recurso_id=recurso.id,
+        cliente_id=cliente.id,
+        inicio=inicio,
+        fim=fim,
+        status=ReservaStatus.confirmada,
+        origem=ReservaOrigem.online,
+        valor_centavos=PRECO_PADRAO_CENTAVOS,
+    )
+    db.add(reserva)
+    await db.flush()
+
+    resp = await client.post(f"/api/v1/reservas/{reserva.id}/notificar")
+    assert resp.status_code == 401

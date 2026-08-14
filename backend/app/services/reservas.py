@@ -48,6 +48,12 @@ class SlotOcupadoError(Exception):
     concorrentes). O router converte para HTTP 409."""
 
 
+class SemEmailError(Exception):
+    """Reserva não tem e-mail associado (cliente avulso sem cadastro) —
+    usado por `notificar_cliente` pra a rota responder 422 claro em vez de
+    silenciosamente não mandar nada."""
+
+
 class SlotInvalidoError(Exception):
     """`inicio`/`fim` não corresponde a um horário real da grade do
     recurso, ou cai fora da janela de reserva online — sem essa checagem,
@@ -331,3 +337,25 @@ async def expirar_pendentes(db: AsyncSession) -> int:
         reserva.status = ReservaStatus.expirada
     await db.flush()
     return len(pendentes)
+
+
+async def notificar_cliente(db: AsyncSession, reserva_id: int) -> None:
+    """Envia um e-mail de lembrete pro cliente da reserva, sob demanda do
+    staff (botão "Notificar por e-mail" na agenda). Diferente dos e-mails
+    automáticos do sistema (pagamento confirmado, cancelamento — ambos
+    best-effort), este NÃO engole falha: se `email.enviar` levantar, a
+    exceção sobe pra rota responder erro, porque é uma ação que o staff
+    disparou de propósito e precisa saber se funcionou."""
+    reserva = await _buscar_reserva_ou_404(db, reserva_id)
+    if reserva.cliente_id is None:
+        raise SemEmailError()
+    cliente = await db.get(Cliente, reserva.cliente_id)
+    if cliente is None:
+        raise SemEmailError()
+    assunto, html = email_templates.lembrete_reserva_email(
+        cliente.nome,
+        reserva.recurso.nome,
+        f"{reserva.inicio:%d/%m/%Y %H:%M}",
+        reserva.valor_centavos,
+    )
+    await email.enviar(cliente.email, assunto, html)

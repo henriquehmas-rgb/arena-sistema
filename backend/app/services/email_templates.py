@@ -21,6 +21,10 @@ _FONTE = (
 _LOGO_URL = "https://arenacacerense.com.br/assets/logo-horiz-white.png"
 
 
+def _centavos_para_reais(centavos: int) -> str:
+    return f"R$ {centavos / 100:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+
+
 def _base(titulo: str, corpo_html: str, cor_destaque: str = _AZUL) -> str:
     return f"""\
 <!DOCTYPE html>
@@ -143,3 +147,21 @@ def cancelamento_reserva_email(
         "<p>Se você não solicitou este cancelamento ou tiver dúvidas, entre em contato conosco.</p>"
     )
     return "Reserva cancelada — Arena Cacerense", _base("Reserva cancelada", corpo, cor_destaque=_VERMELHO)
+
+
+def lembrete_reserva_email(
+    nome: str, recurso_nome: str, inicio_str: str, valor_centavos: int
+) -> tuple[str, str]:
+    corpo = (
+        f"<p>Olá {nome},</p>"
+        "<p>Este é um lembrete da sua reserva na Arena Cacerense:</p>"
+        '<table role="presentation" cellpadding="0" cellspacing="0" width="100%" '
+        f'style="margin:16px 0; font-size:14px; background-color:{_FUNDO}; border-radius:8px;">'
+        f'<tr><td style="padding:14px 18px;">'
+        f"<strong>Local:</strong> {recurso_nome}<br>"
+        f"<strong>Data/hora:</strong> {inicio_str}<br>"
+        f"<strong>Valor:</strong> {_centavos_para_reais(valor_centavos)}"
+        "</td></tr></table>"
+        "<p>Te esperamos na Arena Cacerense!</p>"
+    )
+    return "Lembrete de reserva — Arena Cacerense", _base("Lembrete de reserva", corpo)

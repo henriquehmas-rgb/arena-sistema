@@ -70,3 +70,7 @@ class ReservaListaOut(BaseModel):
 
     itens: list[ReservaOut]
     total: int
+
+
+class NotificarOut(BaseModel):
+    status: str

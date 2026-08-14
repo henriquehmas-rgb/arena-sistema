@@ -28,6 +28,7 @@ from app.models.entities import Cliente, Pagamento, Reserva, Staff
 from app.models.enums import ReservaStatus
 from app.schemas.reservas import (
     CancelarAdminIn,
+    NotificarOut,
     ReservaBalcaoCriar,
     ReservaCriar,
     ReservaListaOut,
@@ -239,3 +240,26 @@ async def cancelar_reserva_admin(
         dados={"estornar": dados.estornar},
     )
     return StatusOut(status=reserva.status)
+
+
+@router.post("/{reserva_id}/notificar", response_model=NotificarOut)
+async def notificar_reserva(
+    reserva_id: int,
+    staff: Staff = Depends(get_staff_atual),
+    db: AsyncSession = Depends(get_db),
+) -> NotificarOut:
+    try:
+        await reservas_service.notificar_cliente(db, reserva_id)
+    except reservas_service.SemEmailError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="sem_email"
+        ) from None
+    await auditoria.registrar(
+        db,
+        staff_id=staff.id,
+        acao="notificar",
+        entidade="reserva",
+        entidade_id=reserva_id,
+        dados=None,
+    )
+    return NotificarOut(status="enviado")
