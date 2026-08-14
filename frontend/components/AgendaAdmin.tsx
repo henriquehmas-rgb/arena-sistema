@@ -44,19 +44,33 @@ function mensagemErro(e: unknown, fallback: string): string {
   return err?.body?.detail || fallback;
 }
 
-function corCelula(tipo: CelulaTipo): { bg: string; texto: string } {
+function corCelula(tipo: CelulaTipo): { borda: string; texto: string } {
   switch (tipo) {
     case "confirmada":
-      return { bg: "#e0f5e9", texto: "var(--verde)" };
+      return { borda: "#1c9a5b", texto: "var(--verde)" };
     case "pendente":
-      return { bg: "#fff4d6", texto: "#92660b" };
+      return { borda: "#d97706", texto: "#92660b" };
     case "mensalista":
-      return { bg: "#e3f0fd", texto: "var(--azul)" };
+      return { borda: "var(--azul)", texto: "var(--azul)" };
     case "bloqueio":
-      return { bg: "#e7e9f0", texto: "var(--cinza)" };
+      return { borda: "var(--cinza)", texto: "var(--cinza)" };
     default:
-      return { bg: "var(--branco)", texto: "var(--tinta)" };
+      return { borda: "transparent", texto: "var(--tinta)" };
   }
+}
+
+function nomeCliente(celula: Celula): string {
+  if (celula.tipo === "bloqueio") return celula.bloqueio?.motivo || "Bloqueado";
+  return celula.reserva?.cliente_nome || "—";
+}
+
+function statusResumo(celula: Celula): string {
+  if (celula.tipo === "bloqueio") return "Bloqueado";
+  if (celula.tipo === "mensalista") return "Mensalista";
+  const statusPagamento = celula.reserva?.pagamento_status;
+  if (statusPagamento === "pago") return "✓ Pago";
+  if (statusPagamento === "pendente" || celula.tipo === "pendente") return "⏳ Pendente";
+  return celula.tipo === "confirmada" ? "Confirmada" : "";
 }
 
 export default function AgendaAdmin() {
@@ -213,7 +227,32 @@ export default function AgendaAdmin() {
                     if (!celula) {
                       return <td key={r.id} style={{ padding: 4 }} />;
                     }
-                    const { bg, texto } = corCelula(celula.tipo);
+                    if (celula.tipo === "livre") {
+                      return (
+                        <td key={r.id} style={{ padding: 4 }}>
+                          <button
+                            type="button"
+                            onClick={() => clicarCelula(r, celula)}
+                            style={{
+                              width: "100%",
+                              textAlign: "left",
+                              padding: "8px 10px",
+                              borderRadius: 8,
+                              border: "1.5px solid #d7dbe6",
+                              background: "var(--branco)",
+                              color: "var(--tinta)",
+                              cursor: "pointer",
+                              fontFamily: "inherit",
+                              fontWeight: 600,
+                              fontSize: "0.85rem",
+                            }}
+                          >
+                            {centavos(celula.slot.preco_centavos)}
+                          </button>
+                        </td>
+                      );
+                    }
+                    const { borda, texto } = corCelula(celula.tipo);
                     return (
                       <td key={r.id} style={{ padding: 4 }}>
                         <button
@@ -225,20 +264,19 @@ export default function AgendaAdmin() {
                             textAlign: "left",
                             padding: "8px 10px",
                             borderRadius: 8,
-                            border: "1.5px solid #d7dbe6",
-                            background: bg,
-                            color: texto,
+                            border: "1px solid #e5e7eb",
+                            borderLeft: `4px solid ${borda}`,
+                            background: "var(--branco)",
+                            boxShadow: "0 1px 3px rgba(23,19,53,.06)",
                             cursor: celula.tipo === "bloqueio" ? "not-allowed" : "pointer",
                             fontFamily: "inherit",
-                            fontWeight: 600,
-                            fontSize: "0.85rem",
+                            fontSize: "0.82rem",
                           }}
                         >
-                          {celula.tipo === "livre" && centavos(celula.slot.preco_centavos)}
-                          {celula.tipo === "pendente" && "Pendente"}
-                          {celula.tipo === "confirmada" && (celula.reserva?.recurso_nome ? "Confirmada" : "Confirmada")}
-                          {celula.tipo === "mensalista" && "Mensalista"}
-                          {celula.tipo === "bloqueio" && (celula.bloqueio?.motivo || "Bloqueado")}
+                          <span style={{ display: "block", fontWeight: 700, color: "var(--tinta)", marginBottom: 2 }}>
+                            {nomeCliente(celula)}
+                          </span>
+                          <span style={{ fontSize: "0.72rem", color: texto }}>{statusResumo(celula)}</span>
                         </button>
                       </td>
                     );
@@ -249,10 +287,10 @@ export default function AgendaAdmin() {
           </table>
 
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 16, fontSize: "0.82rem" }}>
-            <Legenda cor="#e0f5e9" texto="Confirmada" />
-            <Legenda cor="#fff4d6" texto="Pendente" />
-            <Legenda cor="#e3f0fd" texto="Mensalista" />
-            <Legenda cor="#e7e9f0" texto="Bloqueio" />
+            <Legenda cor="#1c9a5b" texto="Confirmada" />
+            <Legenda cor="#d97706" texto="Pendente" />
+            <Legenda cor="var(--azul)" texto="Mensalista" />
+            <Legenda cor="var(--cinza)" texto="Bloqueio" />
             <Legenda cor="#ffffff" texto="Livre" borda />
           </div>
         </div>
