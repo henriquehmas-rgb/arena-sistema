@@ -192,7 +192,7 @@ async def criar_reserva_balcao(
     db: AsyncSession = Depends(get_db),
 ) -> ReservaOut:
     try:
-        reserva = await reservas_service.criar_balcao(db, staff, dados)
+        reserva, pagamento = await reservas_service.criar_balcao(db, staff, dados)
     except reservas_service.SlotInvalidoError:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="slot_invalido"
@@ -218,7 +218,7 @@ async def criar_reserva_balcao(
             "metodo": dados.metodo.value,
         },
     )
-    return _para_out(reserva)
+    return _para_out(reserva, pagamento)
 
 
 @router.post("/{reserva_id}/cancelar-admin", response_model=StatusOut)

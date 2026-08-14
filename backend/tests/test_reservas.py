@@ -239,18 +239,21 @@ async def test_criar_balcao_confirmada_com_pagamento(db):
         metodo=MetodoPagamento.dinheiro,
     )
 
-    reserva = await reservas_service.criar_balcao(db, staff, dados)
+    reserva, pagamento = await reservas_service.criar_balcao(db, staff, dados)
 
     assert reserva.status == ReservaStatus.confirmada
     assert reserva.origem == ReservaOrigem.balcao
     assert reserva.valor_centavos == PRECO_PADRAO_CENTAVOS
 
-    pagamento = (
-        await db.execute(select(Pagamento).where(Pagamento.reserva_id == reserva.id))
-    ).scalar_one()
+    assert pagamento.reserva_id == reserva.id
     assert pagamento.metodo == MetodoPagamento.dinheiro
     assert pagamento.status == PagamentoStatus.pago
     assert pagamento.registrado_por_staff_id == staff.id
+
+    pagamento_no_banco = (
+        await db.execute(select(Pagamento).where(Pagamento.reserva_id == reserva.id))
+    ).scalar_one()
+    assert pagamento_no_banco.id == pagamento.id
 
 
 async def test_rota_balcao(client, db, staff_admin_logado):
@@ -271,7 +274,15 @@ async def test_rota_balcao(client, db, staff_admin_logado):
         headers=staff_admin_logado["headers"],
     )
     assert resp.status_code == 201, resp.text
-    assert resp.json()["status"] == "confirmada"
+    corpo = resp.json()
+    assert corpo["status"] == "confirmada"
+    # Achado na revisão final de branch: o POST criava o Pagamento (`pago`)
+    # na mesma chamada mas respondia `pagamento_metodo`/`pagamento_status`
+    # como `null` — o payload não refletia o pagamento que acabara de
+    # nascer junto com a reserva, embora um `GET /reservas` logo em seguida
+    # já mostrasse os dois campos preenchidos.
+    assert corpo["pagamento_metodo"] == "dinheiro"
+    assert corpo["pagamento_status"] == "pago"
 
     # Achado na revisão final de branch: reserva de balcão não registrava
     # auditoria (uma reserva paga criada no ato, sem trilha nenhuma).
@@ -657,10 +668,12 @@ async def test_rota_criar_balcao_avulso_sem_email(client, db, staff_admin_logado
 
 async def test_rota_listar_staff_inclui_pagamento_mais_recente(client, db, staff_admin_logado):
     recurso = await criar_recurso(db, nome="Campo T6 Pagamento Recente")
+    cliente = await criar_cliente(db, nome="Cliente Pagamento Recente")
     inicio, fim = horario_futuro(dias=8)
 
     reserva_com_pagamento = Reserva(
         recurso_id=recurso.id,
+        cliente_id=cliente.id,
         inicio=inicio,
         fim=fim,
         status=ReservaStatus.confirmada,
@@ -711,8 +724,18 @@ async def test_rota_listar_staff_inclui_pagamento_mais_recente(client, db, staff
 
     assert por_id[reserva_com_pagamento.id]["pagamento_metodo"] == "dinheiro"
     assert por_id[reserva_com_pagamento.id]["pagamento_status"] == "pago"
+    # Combinação que o card/modal da Agenda consome junto: dados do cliente
+    # (em particular `cliente_email`, que habilita o botão "Notificar por
+    # e-mail") precisam vir na MESMA linha que os campos de pagamento.
+    assert por_id[reserva_com_pagamento.id]["cliente_nome"] == "Cliente Pagamento Recente"
+    assert por_id[reserva_com_pagamento.id]["cliente_celular"] == "65999990000"
+    assert por_id[reserva_com_pagamento.id]["cliente_email"] == "clientepagamentorecente@teste.com"
+
     assert por_id[reserva_sem_pagamento.id]["pagamento_metodo"] is None
     assert por_id[reserva_sem_pagamento.id]["pagamento_status"] is None
+    # `reserva_sem_pagamento` continua avulsa (sem cliente_id) — mantém essa
+    # branch exercitada também.
+    assert por_id[reserva_sem_pagamento.id]["cliente_email"] is None
 
 
 # --- POST /reservas/{id}/notificar ------------------------------------------

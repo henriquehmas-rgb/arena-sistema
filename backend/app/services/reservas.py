@@ -138,10 +138,16 @@ async def criar_online(
 
 async def criar_balcao(
     db: AsyncSession, staff: Staff, dados: ReservaBalcaoCriar
-) -> Reserva:
+) -> tuple[Reserva, Pagamento]:
     """Cria uma reserva `balcao` já `confirmada` + `Pagamento` `pago`
     (o cliente paga na hora, no balcão — `dinheiro` ou `pix_manual`), com o
-    `staff` autenticado registrado em `Pagamento.registrado_por_staff_id`."""
+    `staff` autenticado registrado em `Pagamento.registrado_por_staff_id`.
+    Retorna `(reserva, pagamento)` — diferente de `criar_online` (que não
+    tem pagamento no momento da criação), aqui o `Pagamento` já nasce
+    `pago` junto, e o chamador precisa dele pra montar um `ReservaOut` com
+    `pagamento_metodo`/`pagamento_status` preenchidos (sem isso, a resposta
+    do POST mostraria `null` pra uma reserva que acabou de ser paga —
+    inconsistente com o que `GET /reservas` mostraria um instante depois)."""
     recurso = await _buscar_recurso_ou_404(db, dados.recurso_id)
 
     if dados.cliente_id is not None:
@@ -180,18 +186,17 @@ async def criar_balcao(
         reserva.cliente = cliente
     reserva = await _inserir(db, reserva)
 
-    db.add(
-        Pagamento(
-            reserva_id=reserva.id,
-            metodo=dados.metodo,
-            valor_centavos=valor_centavos,
-            status=PagamentoStatus.pago,
-            pago_em=datetime.now(timezone.utc),
-            registrado_por_staff_id=staff.id,
-        )
+    pagamento = Pagamento(
+        reserva_id=reserva.id,
+        metodo=dados.metodo,
+        valor_centavos=valor_centavos,
+        status=PagamentoStatus.pago,
+        pago_em=datetime.now(timezone.utc),
+        registrado_por_staff_id=staff.id,
     )
+    db.add(pagamento)
     await db.flush()
-    return reserva
+    return reserva, pagamento
 
 
 async def _notificar_cancelamento(db: AsyncSession, reserva: Reserva, cliente: Cliente | None) -> None:
