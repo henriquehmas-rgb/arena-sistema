@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.deps import get_cliente_atual, get_db, get_staff_atual
-from app.models.entities import Cliente, Reserva, Staff
+from app.models.entities import Cliente, Pagamento, Reserva, Staff
 from app.models.enums import ReservaStatus
 from app.schemas.reservas import (
     CancelarAdminIn,
@@ -66,7 +66,7 @@ def _limites_periodo_utc(
     return inicio_utc, fim_utc
 
 
-def _para_out(reserva: Reserva) -> ReservaOut:
+def _para_out(reserva: Reserva, pagamento: Pagamento | None = None) -> ReservaOut:
     expira_em = None
     if reserva.status == ReservaStatus.pendente_pagamento:
         expira_em = reserva.criado_em + timedelta(minutes=settings.reserva_ttl_min)
@@ -93,6 +93,8 @@ def _para_out(reserva: Reserva) -> ReservaOut:
         cliente_nome=cliente_nome,
         cliente_celular=cliente_celular,
         cliente_email=cliente_email,
+        pagamento_metodo=pagamento.metodo if pagamento else None,
+        pagamento_status=pagamento.status if pagamento else None,
     )
 
 
@@ -173,7 +175,13 @@ async def listar_reservas_staff(
         limit=limit,
         offset=offset,
     )
-    return ReservaListaOut(itens=[_para_out(r) for r in itens], total=total)
+    pagamentos_por_reserva = await reservas_service.pagamentos_mais_recentes(
+        db, [item.id for item in itens]
+    )
+    return ReservaListaOut(
+        itens=[_para_out(item, pagamentos_por_reserva.get(item.id)) for item in itens],
+        total=total,
+    )
 
 
 @router.post("/balcao", response_model=ReservaOut, status_code=status.HTTP_201_CREATED)

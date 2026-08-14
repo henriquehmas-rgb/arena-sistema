@@ -290,6 +290,29 @@ async def listar_staff(
     return itens, total
 
 
+async def pagamentos_mais_recentes(
+    db: AsyncSession, reserva_ids: list[int]
+) -> dict[int, Pagamento]:
+    """Retorna o `Pagamento` mais recente (por `criado_em`) de cada reserva
+    em `reserva_ids`, indexado por `reserva_id` — usado pela listagem da
+    agenda do staff pra mostrar método/status de pagamento em cada card
+    sem emitir uma query por reserva (evita N+1). Uma reserva pode ter mais
+    de um `Pagamento` (ex.: uma tentativa que falhou seguida de outra que
+    pagou) — o mais recente é o que reflete o estado atual."""
+    if not reserva_ids:
+        return {}
+    resultado = await db.execute(
+        select(Pagamento)
+        .where(Pagamento.reserva_id.in_(reserva_ids))
+        .order_by(Pagamento.reserva_id, Pagamento.criado_em.desc())
+    )
+    mais_recentes: dict[int, Pagamento] = {}
+    for pagamento in resultado.scalars().all():
+        if pagamento.reserva_id not in mais_recentes:
+            mais_recentes[pagamento.reserva_id] = pagamento
+    return mais_recentes
+
+
 async def expirar_pendentes(db: AsyncSession) -> int:
     """Muda para `expirada` toda reserva `pendente_pagamento` cujo TTL
     (`criado_em + settings.reserva_ttl_min`) já venceu. Retorna quantas

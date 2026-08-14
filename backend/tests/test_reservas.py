@@ -653,3 +653,63 @@ async def test_rota_criar_balcao_avulso_sem_email(client, db, staff_admin_logado
     assert corpo["cliente_nome"] == "Cliente Avulso Teste"
     assert corpo["cliente_celular"] == "65988887777"
     assert corpo["cliente_email"] is None
+
+
+async def test_rota_listar_staff_inclui_pagamento_mais_recente(client, db, staff_admin_logado):
+    recurso = await criar_recurso(db, nome="Campo T6 Pagamento Recente")
+    inicio, fim = horario_futuro(dias=8)
+
+    reserva_com_pagamento = Reserva(
+        recurso_id=recurso.id,
+        inicio=inicio,
+        fim=fim,
+        status=ReservaStatus.confirmada,
+        origem=ReservaOrigem.balcao,
+        valor_centavos=PRECO_PADRAO_CENTAVOS,
+    )
+    db.add(reserva_com_pagamento)
+    await db.flush()
+
+    # Dois pagamentos pra confirmar que pega o MAIS RECENTE (pago), não o
+    # primeiro que tentou e falhou.
+    db.add(
+        Pagamento(
+            reserva_id=reserva_com_pagamento.id,
+            metodo=MetodoPagamento.pix,
+            valor_centavos=PRECO_PADRAO_CENTAVOS,
+            status=PagamentoStatus.falhou,
+            criado_em=datetime.now(timezone.utc) - timedelta(minutes=5),
+        )
+    )
+    db.add(
+        Pagamento(
+            reserva_id=reserva_com_pagamento.id,
+            metodo=MetodoPagamento.dinheiro,
+            valor_centavos=PRECO_PADRAO_CENTAVOS,
+            status=PagamentoStatus.pago,
+            pago_em=datetime.now(timezone.utc),
+        )
+    )
+
+    reserva_sem_pagamento = Reserva(
+        recurso_id=recurso.id,
+        inicio=inicio + timedelta(hours=1),
+        fim=fim + timedelta(hours=1),
+        status=ReservaStatus.pendente_pagamento,
+        origem=ReservaOrigem.online,
+        valor_centavos=PRECO_PADRAO_CENTAVOS,
+    )
+    db.add(reserva_sem_pagamento)
+    await db.flush()
+
+    resp = await client.get(
+        f"/api/v1/reservas?recurso_id={recurso.id}",
+        headers=staff_admin_logado["headers"],
+    )
+    assert resp.status_code == 200, resp.text
+    por_id = {item["id"]: item for item in resp.json()["itens"]}
+
+    assert por_id[reserva_com_pagamento.id]["pagamento_metodo"] == "dinheiro"
+    assert por_id[reserva_com_pagamento.id]["pagamento_status"] == "pago"
+    assert por_id[reserva_sem_pagamento.id]["pagamento_metodo"] is None
+    assert por_id[reserva_sem_pagamento.id]["pagamento_status"] is None
