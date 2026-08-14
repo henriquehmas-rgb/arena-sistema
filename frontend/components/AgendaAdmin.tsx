@@ -310,7 +310,7 @@ export default function AgendaAdmin() {
       )}
 
       {detalhe && (
-        <PainelDetalhe
+        <ModalDetalheReserva
           celula={detalhe}
           onFechar={() => setDetalhe(null)}
           onCancelado={() => {
@@ -353,7 +353,7 @@ function Legenda({ cor, texto, borda }: { cor: string; texto: string; borda?: bo
   );
 }
 
-function PainelDetalhe({
+function ModalDetalheReserva({
   celula,
   onFechar,
   onCancelado,
@@ -365,6 +365,9 @@ function PainelDetalhe({
   const [estornar, setEstornar] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [cancelando, setCancelando] = useState(false);
+  const [notificando, setNotificando] = useState(false);
+  const [notificado, setNotificado] = useState(false);
+  const [erroNotificar, setErroNotificar] = useState<string | null>(null);
   const reserva = celula.reserva!;
 
   async function cancelar() {
@@ -381,15 +384,29 @@ function PainelDetalhe({
     }
   }
 
+  async function notificar() {
+    setNotificando(true);
+    setErroNotificar(null);
+    setNotificado(false);
+    try {
+      await api.notificarReserva(reserva.id);
+      setNotificado(true);
+    } catch (e) {
+      setErroNotificar(mensagemErro(e, "Não foi possível enviar o e-mail."));
+    } finally {
+      setNotificando(false);
+    }
+  }
+
   return (
     <div
       role="dialog"
       aria-modal="true"
-      style={{ position: "fixed", inset: 0, background: "rgba(23,19,53,0.45)", display: "flex", justifyContent: "flex-end", zIndex: 50 }}
+      style={{ position: "fixed", inset: 0, background: "rgba(23,19,53,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}
       onClick={onFechar}
     >
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 380, height: "100%", overflowY: "auto" }}>
-        <Card style={{ height: "100%", borderRadius: 0 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 420 }}>
+        <Card>
           <Titulo as="h2">Detalhes da reserva</Titulo>
           {erro && <Aviso tipo="erro">{erro}</Aviso>}
           <p>
@@ -398,8 +415,31 @@ function PainelDetalhe({
           <p>
             {horaLocal(reserva.inicio)} às {horaLocal(reserva.fim)}
           </p>
-          <p>Valor: {centavos(reserva.valor_centavos)}</p>
-          <p>Origem: {(reserva as Reserva & { origem?: string }).origem || "-"}</p>
+
+          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6, fontSize: "0.9rem" }}>
+            <LinhaDetalhe rotulo="Cliente" valor={reserva.cliente_nome || "—"} />
+            <LinhaDetalhe rotulo="Celular" valor={reserva.cliente_celular || "—"} />
+            <LinhaDetalhe rotulo="E-mail" valor={reserva.cliente_email || "—"} />
+            <LinhaDetalhe rotulo="Valor" valor={centavos(reserva.valor_centavos)} />
+            <LinhaDetalhe
+              rotulo="Pagamento"
+              valor={reserva.pagamento_metodo ? `${reserva.pagamento_metodo} · ${reserva.pagamento_status}` : "—"}
+            />
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            {erroNotificar && <Aviso tipo="erro">{erroNotificar}</Aviso>}
+            {notificado && <Aviso tipo="sucesso">E-mail enviado ✓</Aviso>}
+            <BotaoSecundario
+              type="button"
+              onClick={notificar}
+              disabled={notificando || !reserva.cliente_email}
+              title={!reserva.cliente_email ? "Cliente sem e-mail cadastrado" : undefined}
+              style={{ width: "100%" }}
+            >
+              {notificando ? "Enviando..." : "✉ Notificar por e-mail"}
+            </BotaoSecundario>
+          </div>
 
           {reserva.status !== "cancelada" && (
             <>
@@ -420,6 +460,15 @@ function PainelDetalhe({
           </div>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function LinhaDetalhe({ rotulo, valor }: { rotulo: string; valor: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid #f0f1f5", paddingBottom: 4 }}>
+      <span style={{ color: "var(--cinza)" }}>{rotulo}</span>
+      <span style={{ fontWeight: 600, color: "var(--tinta)" }}>{valor}</span>
     </div>
   );
 }
