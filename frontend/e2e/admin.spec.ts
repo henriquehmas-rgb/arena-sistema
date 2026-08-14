@@ -107,8 +107,11 @@ test("login staff -> reserva balcão -> agenda confirmada -> caixa soma -> bloqu
       break;
     }
   }
+  // Task 5 (redesign da agenda): a célula não mostra mais "Confirmada" — é
+  // um card com o nome do cliente + indicador curto de pagamento.
   const celulaConfirmada = linhaHorario.locator("td").nth(colBalcao);
-  await expect(celulaConfirmada).toContainText("Confirmada", { timeout: 15_000 });
+  await expect(celulaConfirmada).toContainText(nomeAvulso, { timeout: 15_000 });
+  await expect(celulaConfirmada).toContainText("Pago", { timeout: 15_000 });
 
   // 5. Caixa do dia: soma inclui o lançamento recém-criado.
   // Nota: `GET /caixa` soma por `Pagamento.pago_em` (quando o dinheiro foi
