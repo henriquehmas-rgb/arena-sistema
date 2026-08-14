@@ -70,6 +70,16 @@ def _para_out(reserva: Reserva) -> ReservaOut:
     expira_em = None
     if reserva.status == ReservaStatus.pendente_pagamento:
         expira_em = reserva.criado_em + timedelta(minutes=settings.reserva_ttl_min)
+
+    if reserva.cliente_id is not None:
+        cliente_nome = reserva.cliente.nome
+        cliente_celular = reserva.cliente.celular
+        cliente_email = reserva.cliente.email
+    else:
+        cliente_nome = reserva.nome_avulso
+        cliente_celular = reserva.celular_avulso
+        cliente_email = None
+
     return ReservaOut(
         id=reserva.id,
         recurso_id=reserva.recurso_id,
@@ -80,6 +90,9 @@ def _para_out(reserva: Reserva) -> ReservaOut:
         origem=reserva.origem,
         valor_centavos=reserva.valor_centavos,
         expira_em=expira_em,
+        cliente_nome=cliente_nome,
+        cliente_celular=cliente_celular,
+        cliente_email=cliente_email,
     )
 
 

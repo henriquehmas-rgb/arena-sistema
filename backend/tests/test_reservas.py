@@ -605,3 +605,51 @@ async def test_rota_listar_staff_filtra_por_data_do_dia(client, db, staff_admin_
     corpo = resp.json()
     assert corpo["total"] == 1
     assert datetime.fromisoformat(corpo["itens"][0]["inicio"]) == inicio_hoje_utc
+
+
+# --- enriquecimento de ReservaOut com dados de cliente (agenda admin) -------
+
+
+async def test_rota_criar_reserva_inclui_dados_do_cliente(client, db, cliente_logado):
+    recurso = await criar_recurso(db, nome="Campo T6 Cliente Nome")
+    await criar_faixa_padrao(db, recurso)
+    inicio, fim = horario_futuro(dias=6)
+
+    resp = await client.post(
+        "/api/v1/reservas",
+        json={
+            "recurso_id": recurso.id,
+            "inicio": inicio.isoformat(),
+            "fim": fim.isoformat(),
+        },
+        headers=cliente_logado["headers"],
+    )
+    assert resp.status_code == 201, resp.text
+    corpo = resp.json()
+    assert corpo["cliente_nome"] == cliente_logado["cliente"].nome
+    assert corpo["cliente_celular"] == cliente_logado["cliente"].celular
+    assert corpo["cliente_email"] == cliente_logado["cliente"].email
+
+
+async def test_rota_criar_balcao_avulso_sem_email(client, db, staff_admin_logado):
+    recurso = await criar_recurso(db, nome="Campo T6 Balcao Avulso")
+    await criar_faixa_padrao(db, recurso)
+    inicio, fim = horario_futuro(dias=7)
+
+    resp = await client.post(
+        "/api/v1/reservas/balcao",
+        json={
+            "recurso_id": recurso.id,
+            "inicio": inicio.isoformat(),
+            "fim": fim.isoformat(),
+            "nome_avulso": "Cliente Avulso Teste",
+            "celular_avulso": "65988887777",
+            "metodo": "dinheiro",
+        },
+        headers=staff_admin_logado["headers"],
+    )
+    assert resp.status_code == 201, resp.text
+    corpo = resp.json()
+    assert corpo["cliente_nome"] == "Cliente Avulso Teste"
+    assert corpo["cliente_celular"] == "65988887777"
+    assert corpo["cliente_email"] is None

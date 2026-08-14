@@ -1,6 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, model_validator
-from app.models.enums import ReservaStatus, ReservaOrigem, MetodoPagamento
+from app.models.enums import MetodoPagamento, PagamentoStatus, ReservaOrigem, ReservaStatus
 
 
 class ReservaCriar(BaseModel):
@@ -32,6 +32,11 @@ class ReservaOut(BaseModel):
     origem: ReservaOrigem
     valor_centavos: int
     expira_em: datetime | None = None
+    cliente_nome: str | None = None
+    cliente_celular: str | None = None
+    cliente_email: str | None = None
+    pagamento_metodo: MetodoPagamento | None = None
+    pagamento_status: PagamentoStatus | None = None
     model_config = {"from_attributes": True}
 
 

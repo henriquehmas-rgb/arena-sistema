@@ -119,6 +119,14 @@ async def criar_online(
         valor_centavos=valor_centavos,
     )
     reserva.recurso = recurso
+    # Atribuir o objeto (não só cliente_id) preenche a relationship em
+    # memória — sem isso, `_para_out` acessando `reserva.cliente` logo
+    # depois do insert dispara `MissingGreenlet` (mesma classe de bug já
+    # corrigida nesta sessão para `Assinatura.cliente`/`.recurso`: um
+    # objeto recém-inserido, nunca reconsultado via SELECT, não tem a
+    # relationship carregada mesmo com `lazy="joined"` — esse `lazy` só
+    # afeta como um SELECT futuro carregaria o objeto).
+    reserva.cliente = cliente
     return await _inserir(db, reserva)
 
 
@@ -160,6 +168,10 @@ async def criar_balcao(
         valor_centavos=valor_centavos,
     )
     reserva.recurso = recurso
+    if dados.cliente_id is not None:
+        # Mesmo motivo do comentário em `criar_online` — evita
+        # MissingGreenlet ao acessar `reserva.cliente` em `_para_out`.
+        reserva.cliente = cliente
     reserva = await _inserir(db, reserva)
 
     db.add(

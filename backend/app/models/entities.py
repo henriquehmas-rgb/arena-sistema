@@ -82,6 +82,7 @@ class Reserva(Base):
     criado_em: Mapped[datetime] = mapped_column(server_default=func.now())
 
     recurso = relationship("Recurso", lazy="joined")
+    cliente = relationship("Cliente", lazy="joined")
 
 
 class Bloqueio(Base):
