@@ -38,16 +38,25 @@ a {
   padding: 24px 16px 64px;
 }
 
-/* Header */
+/* Header — mesmo tratamento "vidro claro" do header do site institucional
+   (arenacacerense.com.br): fundo translúcido claro com blur, não mais a
+   barra escura sólida original. */
 .ac-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 24px;
-  background: var(--tinta);
-  color: var(--branco);
+  padding: 14px 24px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgba(32, 21, 97, 0.08);
+  box-shadow: 0 4px 20px rgba(32, 21, 97, 0.05);
+  color: var(--tinta);
   flex-wrap: wrap;
   gap: 8px 16px;
+  position: sticky;
+  top: 0;
+  z-index: 60;
 }
 
 @media (max-width: 480px) {
@@ -72,7 +81,7 @@ a {
   font-size: 1.4rem;
   letter-spacing: 0.02em;
   text-decoration: none;
-  color: var(--branco);
+  color: var(--tinta);
 }
 
 .ac-logo span {
@@ -87,19 +96,20 @@ a {
 
 .ac-nav a,
 .ac-nav button {
-  color: var(--branco);
+  color: rgba(23, 19, 53, 0.65);
   text-decoration: none;
-  font-weight: 500;
+  font-weight: 600;
   background: none;
   border: none;
   cursor: pointer;
   font-size: 1rem;
   font-family: inherit;
+  transition: color 0.15s ease;
 }
 
 .ac-nav a:hover,
 .ac-nav button:hover {
-  color: var(--ciano);
+  color: var(--tinta);
 }
 
 /* Título */
