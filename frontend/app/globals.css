@@ -269,54 +269,66 @@ a {
   color: var(--verde);
 }
 
-/* Grade de recursos/dias/slots */
+/* Grade de recursos/dias/slots — mesmo padrão visual (fonte Kanit itálica
+   com skew nas abas, cards verdes pro horário livre) da grade de exemplo do
+   site institucional (arenacacerense.com.br/campos.dc.html). */
 .ac-tabs {
   display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: 12px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
 }
 
 .ac-tab {
-  padding: 8px 16px;
-  border-radius: 8px;
-  border: 1.5px solid #d7dbe6;
-  background: var(--branco);
   cursor: pointer;
-  font-weight: 600;
-  font-family: inherit;
+  padding: 12px 26px;
+  border-radius: 12px;
+  transform: skewX(-8deg);
+  border: 1px solid rgba(23, 19, 53, 0.15);
+  background: var(--branco);
+  color: rgba(23, 19, 53, 0.65);
+  font-family: var(--font-kanit), sans-serif;
+  font-style: italic;
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.5px;
+  transition: all 0.2s ease;
 }
 
 .ac-tab.ativo {
-  background: var(--azul);
-  border-color: var(--azul);
+  border-color: rgba(0, 175, 239, 0.8);
+  background: linear-gradient(135deg, var(--ciano), var(--azul));
   color: var(--branco);
 }
 
 .ac-dias {
   display: flex;
   gap: 8px;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   overflow-x: auto;
   padding-bottom: 4px;
 }
 
 .ac-dia {
   flex: 0 0 auto;
-  padding: 10px 14px;
-  border-radius: 8px;
-  border: 1.5px solid #d7dbe6;
-  background: var(--branco);
   cursor: pointer;
-  font-weight: 600;
-  text-transform: capitalize;
+  padding: 10px 18px;
+  border-radius: 11px;
+  border: 1px solid rgba(23, 19, 53, 0.12);
+  background: var(--branco);
+  color: rgba(23, 19, 53, 0.55);
+  font-weight: 700;
+  font-size: 13.5px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
   font-family: inherit;
+  transition: all 0.2s ease;
 }
 
 .ac-dia.ativo {
-  background: var(--tinta);
-  border-color: var(--tinta);
-  color: var(--branco);
+  border-color: rgba(0, 175, 239, 0.6);
+  background: rgba(0, 175, 239, 0.1);
+  color: var(--azul);
 }
 
 .ac-grade {
@@ -326,40 +338,57 @@ a {
 }
 
 .ac-slot {
-  border-radius: 10px;
-  border: 1.5px solid #d7dbe6;
-  padding: 14px;
+  display: block;
+  border-radius: 14px;
+  border: 1px solid rgba(5, 150, 105, 0.35);
+  background: rgba(5, 150, 105, 0.06);
+  padding: 16px;
   text-align: left;
-  background: var(--branco);
   cursor: pointer;
   font-family: inherit;
+  color: #065f46;
+  transition: all 0.2s ease;
 }
 
 .ac-slot:hover:not(:disabled) {
-  border-color: var(--azul);
+  background: rgba(5, 150, 105, 0.13);
+  border-color: rgba(5, 150, 105, 0.7);
+  transform: translateY(-3px);
+  box-shadow: 0 14px 30px rgba(5, 150, 105, 0.15);
 }
 
 .ac-slot-hora {
-  font-weight: 700;
-  font-size: 1rem;
+  font-family: var(--font-kanit), sans-serif;
+  font-style: italic;
+  font-weight: 800;
+  font-size: 1.15rem;
   display: block;
 }
 
 .ac-slot-preco {
-  color: var(--azul);
-  font-weight: 600;
+  color: #059669;
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.3px;
   display: block;
   margin-top: 4px;
 }
 
 .ac-slot-ocupado {
-  background: #f2f2f5;
+  background: #f4f5f9;
+  border-color: rgba(23, 19, 53, 0.06);
   cursor: not-allowed;
-  color: var(--cinza);
+  color: rgba(23, 19, 53, 0.35);
+}
+
+.ac-slot-ocupado:hover:not(:disabled) {
+  transform: none;
+  box-shadow: none;
 }
 
 .ac-slot-ocupado .ac-slot-hora {
   text-decoration: line-through;
+  color: rgba(23, 19, 53, 0.35);
 }
 
 /* Checkout */
