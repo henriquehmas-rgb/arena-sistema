@@ -14,14 +14,24 @@ let accessToken: string | null = null;
 export function setToken(t: string | null) { accessToken = t; if (typeof window !== "undefined") { t ? localStorage.setItem("at", t) : localStorage.removeItem("at"); } }
 export function getToken() { if (!accessToken && typeof window !== "undefined") accessToken = localStorage.getItem("at"); return accessToken; }
 
-async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function req<T>(path: string, init: RequestInit = {}, jaTentouRefresh = false): Promise<T> {
   const r = await fetch(`${API}${path}`, {
     ...init, credentials: "include",
     headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}), ...init.headers },
   });
-  if (r.status === 401 && path !== "/auth/refresh") {
+  // `jaTentouRefresh` limita a UMA tentativa de renovação por chamada — sem
+  // isso, se o token recém-renovado voltasse a ser rejeitado (por qualquer
+  // motivo), `req` chamava a si mesmo indefinidamente: centenas de POST
+  // /auth/refresh + GET repetidos por segundo, a tela travada em
+  // "Carregando..." pra sempre (visto em produção nos logs do arena-api).
+  if (r.status === 401 && path !== "/auth/refresh" && !jaTentouRefresh) {
     const rr = await fetch(`${API}/auth/refresh`, { method: "POST", credentials: "include" });
-    if (rr.ok) { const { access_token } = await rr.json(); setToken(access_token); return req(path, init); }
+    if (rr.ok) {
+      const { access_token } = await rr.json();
+      setToken(access_token);
+      return req(path, init, true);
+    }
+    setToken(null);
   }
   if (!r.ok) throw Object.assign(new Error(`${r.status}`), { status: r.status, body: await r.json().catch(() => null) });
   return r.status === 204 ? (undefined as T) : r.json();

@@ -30,7 +30,14 @@ export default function ContaPage() {
     try {
       const lista = await api.minhasReservas();
       setReservas(lista);
-    } catch (e) {
+    } catch (e: unknown) {
+      const err = e as { status?: number };
+      if (err?.status === 401) {
+        // Sessão expirada e a renovação também falhou (ver lib/api.ts) —
+        // manda pra tela de login em vez de deixar um card de erro sem saída.
+        router.push(`/entrar?volta=${encodeURIComponent("/conta")}`);
+        return;
+      }
       setErro(mensagemErro(e, "Não foi possível carregar suas reservas."));
     }
   }
