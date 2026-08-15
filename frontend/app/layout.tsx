@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { kanit, saira } from "@/lib/fonts";
 import HeaderNav from "@/components/HeaderNav";
 import PageShell from "@/components/PageShell";
@@ -17,9 +16,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <header className="ac-header">
           {/* Logo textual — assets do site institucional (mark.png) não estão
               disponíveis neste repo; ver decisão documentada no relatório da T10. */}
-          <Link href="/" className="ac-logo">
+          <a href="https://arenacacerense.com.br" className="ac-logo">
             ARENA <span>CACERENSE</span>
-          </Link>
+          </a>
           <HeaderNav />
         </header>
         <PageShell>{children}</PageShell>
