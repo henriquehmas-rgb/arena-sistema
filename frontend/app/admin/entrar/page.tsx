@@ -9,7 +9,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { setToken } from "@/lib/api";
-import { setPapelStaff } from "../layout";
+import { setPapelStaff } from "@/lib/staffAuth";
 import { Botao, Campo, Card, Titulo, Aviso } from "@/components/ui";
 
 function mensagemErro(e: unknown, fallback: string): string {

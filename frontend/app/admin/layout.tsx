@@ -5,42 +5,18 @@
 // Decisão (T11): NÃO reusamos `lib/auth.ts` como está — aquele módulo é
 // específico do portal de cliente (cadastro/login/recuperação de senha via
 // `/auth/cliente/*`). O login de staff usa `/auth/staff/login`, que devolve
-// `papel` junto do token (`api.loginStaff`, já em lib/api.ts). Como só este
-// arquivo (layout) e a página de login precisam dessa lógica, mantemos tudo
-// local aqui em vez de criar um novo módulo em lib/ fora da lista de arquivos
-// desta task — evita tocar em arquivos fora do escopo da T11.
+// `papel` junto do token (`api.loginStaff`, já em lib/api.ts).
 //
-// Sessão staff: token em `lib/api.ts` (localStorage "at", via setToken/getToken
-// — mesmo mecanismo do portal público) + `papel` em localStorage separado
-// ("papel_staff") porque o contrato só devolve `papel` no login de staff.
+// Os helpers de sessão (getPapelStaff/setPapelStaff/estaAutenticadoStaff/
+// sairStaff) vivem em `lib/staffAuth.ts`, não aqui: um `layout.tsx` do App
+// Router só pode ter exports reservados (default, metadata, etc.) — um
+// export nomeado qualquer aqui quebra `next build` ("is not a valid Layout
+// export field"), erro que só aparece no build real, não no `tsc --noEmit`.
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { getToken, setToken } from "@/lib/api";
-
-export type PapelStaff = "admin" | "atendente" | string;
-
-const CHAVE_PAPEL = "papel_staff";
-
-export function getPapelStaff(): PapelStaff | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(CHAVE_PAPEL);
-}
-
-export function setPapelStaff(papel: string | null) {
-  if (typeof window === "undefined") return;
-  papel ? localStorage.setItem(CHAVE_PAPEL, papel) : localStorage.removeItem(CHAVE_PAPEL);
-}
-
-export function estaAutenticadoStaff(): boolean {
-  return !!getToken() && !!getPapelStaff();
-}
-
-export function sairStaff() {
-  setToken(null);
-  setPapelStaff(null);
-}
+import { estaAutenticadoStaff, getPapelStaff, sairStaff, type PapelStaff } from "@/lib/staffAuth";
 
 type ItemMenu = { href: string; rotulo: string; papeis: PapelStaff[] };
 
