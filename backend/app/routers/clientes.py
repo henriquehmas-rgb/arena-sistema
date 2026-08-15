@@ -1,5 +1,6 @@
-"""Rotas de clientes usadas pela equipe (staff): busca e cadastro de
-clientes de balcão (sem senha — login web não se aplica a eles)."""
+"""Rotas de clientes: busca e cadastro pela equipe (staff, clientes de
+balcão sem senha) + auto-atendimento (`/me`) para o próprio cliente logado
+ver/editar seus dados de cadastro."""
 
 from __future__ import annotations
 
@@ -7,12 +8,29 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.deps import get_db, get_staff_atual
+from app.deps import get_cliente_atual, get_db, get_staff_atual
 from app.models.entities import Cliente, Staff
-from app.schemas.clientes import ClienteAdminCriar, ClienteOut
+from app.schemas.clientes import ClienteAdminCriar, ClienteMeAtualizar, ClienteOut
 from app.services import auditoria
 
 router = APIRouter()
+
+
+@router.get("/me", response_model=ClienteOut)
+async def meu_cadastro(cliente: Cliente = Depends(get_cliente_atual)) -> Cliente:
+    return cliente
+
+
+@router.put("/me", response_model=ClienteOut)
+async def atualizar_meu_cadastro(
+    dados: ClienteMeAtualizar,
+    cliente: Cliente = Depends(get_cliente_atual),
+    db: AsyncSession = Depends(get_db),
+) -> Cliente:
+    cliente.nome = dados.nome
+    cliente.celular = dados.celular
+    await db.flush()
+    return cliente
 
 
 @router.get("", response_model=list[ClienteOut])

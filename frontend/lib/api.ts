@@ -9,6 +9,7 @@ export type Reserva = {
   pagamento_metodo?: string | null; pagamento_status?: string | null;
 };
 export type Checkout = { pagamento_id: number; status: string; pix_qr_code?: string; pix_copia_cola?: string };
+export type MeuCadastro = { id: number; nome: string; email: string; celular: string; cpf?: string | null };
 
 let accessToken: string | null = null;
 export function setToken(t: string | null) { accessToken = t; if (typeof window !== "undefined") { t ? localStorage.setItem("at", t) : localStorage.removeItem("at"); } }
@@ -45,6 +46,8 @@ export const api = {
   disponibilidade: (recursoId: number, data: string) => req<{ slots: Slot[] }>(`/disponibilidade?recurso_id=${recursoId}&data=${data}`),
   criarReserva: (b: { recurso_id: number; inicio: string; fim: string }) => req<Reserva>("/reservas", { method: "POST", body: JSON.stringify(b) }),
   minhasReservas: () => req<Reserva[]>("/reservas/minhas"),
+  meuCadastro: () => req<MeuCadastro>("/clientes/me"),
+  atualizarMeuCadastro: (b: { nome: string; celular: string }) => req<MeuCadastro>("/clientes/me", { method: "PUT", body: JSON.stringify(b) }),
   cancelarReserva: (id: number) => req<{ status: string }>(`/reservas/${id}/cancelar`, { method: "POST" }),
   checkout: (b: { reserva_id: number; metodo: "pix" | "cartao"; card_token?: string }) => req<Checkout>("/pagamentos/checkout", { method: "POST", body: JSON.stringify(b) }),
   pagamento: (id: number) => req<{ status: string }>(`/pagamentos/${id}`),

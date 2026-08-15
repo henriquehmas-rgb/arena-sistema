@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api, type Reserva } from "@/lib/api";
+import { api, type MeuCadastro, type Reserva } from "@/lib/api";
 import { estaAutenticado, mensagemErro } from "@/lib/auth";
-import { Badge, BotaoSecundario, Card, Titulo, Aviso } from "@/components/ui";
+import { Badge, Botao, BotaoSecundario, Campo, Card, Titulo, Aviso } from "@/components/ui";
 import { centavos, dataLocal, horaLocal } from "@/lib/format";
 
 const STATUS_FUTUROS = new Set(["pendente_pagamento", "confirmada"]);
@@ -12,9 +13,17 @@ const STATUS_FUTUROS = new Set(["pendente_pagamento", "confirmada"]);
 export default function ContaPage() {
   const router = useRouter();
   const [reservas, setReservas] = useState<Reserva[] | null>(null);
+  const [cadastro, setCadastro] = useState<MeuCadastro | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [erroPorReserva, setErroPorReserva] = useState<Record<number, string>>({});
   const [cancelando, setCancelando] = useState<number | null>(null);
+
+  const [editando, setEditando] = useState(false);
+  const [nomeForm, setNomeForm] = useState("");
+  const [celularForm, setCelularForm] = useState("");
+  const [errosForm, setErrosForm] = useState<Record<string, string>>({});
+  const [erroForm, setErroForm] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
     if (!estaAutenticado()) {
@@ -28,8 +37,14 @@ export default function ContaPage() {
   async function carregar() {
     setErro(null);
     try {
-      const lista = await api.minhasReservas();
-      setReservas(lista);
+      const [listaReservas, meuCadastro] = await Promise.all([
+        api.minhasReservas(),
+        api.meuCadastro(),
+      ]);
+      setReservas(listaReservas);
+      setCadastro(meuCadastro);
+      setNomeForm(meuCadastro.nome);
+      setCelularForm(meuCadastro.celular);
     } catch (e: unknown) {
       const err = e as { status?: number };
       if (err?.status === 401) {
@@ -38,7 +53,38 @@ export default function ContaPage() {
         router.push(`/entrar?volta=${encodeURIComponent("/conta")}`);
         return;
       }
-      setErro(mensagemErro(e, "Não foi possível carregar suas reservas."));
+      setErro(mensagemErro(e, "Não foi possível carregar sua conta."));
+    }
+  }
+
+  function iniciarEdicao() {
+    if (!cadastro) return;
+    setNomeForm(cadastro.nome);
+    setCelularForm(cadastro.celular);
+    setErrosForm({});
+    setErroForm(null);
+    setEditando(true);
+  }
+
+  async function salvarCadastro(ev: React.FormEvent) {
+    ev.preventDefault();
+    const e: Record<string, string> = {};
+    if (!nomeForm.trim()) e.nome = "Informe seu nome.";
+    const celularLimpo = celularForm.replace(/\D/g, "");
+    if (!/^\d{10,11}$/.test(celularLimpo)) e.celular = "Informe um celular válido com DDD.";
+    setErrosForm(e);
+    if (Object.keys(e).length > 0) return;
+
+    setSalvando(true);
+    setErroForm(null);
+    try {
+      const atualizado = await api.atualizarMeuCadastro({ nome: nomeForm.trim(), celular: celularLimpo });
+      setCadastro(atualizado);
+      setEditando(false);
+    } catch (err) {
+      setErroForm(mensagemErro(err, "Não foi possível salvar seus dados."));
+    } finally {
+      setSalvando(false);
     }
   }
 
@@ -71,11 +117,83 @@ export default function ContaPage() {
 
   return (
     <>
-      <Titulo>Minha conta</Titulo>
+      <div className="ac-conta-topo">
+        <div>
+          <Titulo>Minha conta</Titulo>
+          {cadastro && <p style={{ margin: "4px 0 0", color: "var(--cinza)" }}>Olá, {cadastro.nome.split(" ")[0]}!</p>}
+        </div>
+        <Link href="/">
+          <Botao>Reservar horário →</Botao>
+        </Link>
+      </div>
+
       {erro && <Aviso tipo="erro">{erro}</Aviso>}
 
+      <Card className="ac-conta-dados">
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+          <Titulo as="h2">Meus dados</Titulo>
+          {!editando && cadastro && (
+            <BotaoSecundario onClick={iniciarEdicao}>Editar</BotaoSecundario>
+          )}
+        </div>
+
+        {editando ? (
+          <form onSubmit={salvarCadastro}>
+            {erroForm && <Aviso tipo="erro">{erroForm}</Aviso>}
+            <Campo
+              label="Nome"
+              value={nomeForm}
+              onChange={(e) => setNomeForm(e.target.value)}
+              erro={errosForm.nome}
+              required
+            />
+            <Campo
+              label="Celular (com DDD)"
+              type="tel"
+              placeholder="65999998888"
+              value={celularForm}
+              onChange={(e) => setCelularForm(e.target.value)}
+              erro={errosForm.celular}
+              required
+            />
+            <p style={{ fontSize: "0.85rem", color: "var(--cinza)", margin: "0 0 14px" }}>
+              E-mail: {cadastro?.email} — pra trocar o e-mail de login, fale com a gente pelo WhatsApp.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <Botao type="submit" disabled={salvando}>
+                {salvando ? "Salvando..." : "Salvar"}
+              </Botao>
+              <BotaoSecundario type="button" onClick={() => setEditando(false)} disabled={salvando}>
+                Cancelar
+              </BotaoSecundario>
+            </div>
+          </form>
+        ) : (
+          cadastro && (
+            <dl className="ac-conta-dados-lista">
+              <div>
+                <dt>Nome</dt>
+                <dd>{cadastro.nome}</dd>
+              </div>
+              <div>
+                <dt>E-mail</dt>
+                <dd>{cadastro.email}</dd>
+              </div>
+              <div>
+                <dt>Celular</dt>
+                <dd>{cadastro.celular}</dd>
+              </div>
+            </dl>
+          )
+        )}
+      </Card>
+
       <Titulo as="h2">Próximas reservas</Titulo>
-      {proximas.length === 0 && <p>Você não tem reservas futuras.</p>}
+      {proximas.length === 0 && (
+        <p>
+          Você não tem reservas futuras. <Link href="/">Reservar um horário →</Link>
+        </p>
+      )}
       <div className="ac-lista-reservas">
         {proximas.map((r) => (
           <Card key={r.id} className="ac-reserva-linha">

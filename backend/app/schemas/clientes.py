@@ -15,3 +15,8 @@ class ClienteAdminCriar(BaseModel):
     email: EmailStr
     celular: str
     cpf: str | None = None
+
+
+class ClienteMeAtualizar(BaseModel):
+    nome: str
+    celular: str

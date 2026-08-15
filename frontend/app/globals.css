@@ -418,6 +418,51 @@ a {
 }
 
 /* Conta */
+.ac-conta-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.ac-conta-dados {
+  margin-bottom: 32px;
+  max-width: 560px;
+}
+
+.ac-conta-dados-lista {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0 0;
+}
+
+.ac-conta-dados-lista > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eef0f5;
+}
+
+.ac-conta-dados-lista > div:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.ac-conta-dados-lista dt {
+  color: var(--cinza);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.ac-conta-dados-lista dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}
+
 .ac-lista-reservas {
   display: flex;
   flex-direction: column;
